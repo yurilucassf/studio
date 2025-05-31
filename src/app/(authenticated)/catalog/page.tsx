@@ -63,8 +63,11 @@ export default function CatalogPage() {
   const handleFormSubmit = async (formData: BookFormData) => {
     setIsLoading(true);
     try {
-      const bookPayload = {
-        ...formData,
+      const bookPayload: Omit<Book, 'id' | 'status' | 'addedDate' | 'borrowedByClientId' | 'borrowedByName' | 'borrowedDate'> & { publicationYear: number } = {
+        title: formData.title,
+        author: formData.author,
+        isbn: formData.isbn,
+        genre: formData.genre,
         publicationYear: Number(formData.publicationYear),
         coverImageUrl: formData.coverImageUrl || `https://placehold.co/300x450.png?text=${encodeURIComponent(formData.title)}`,
       };
@@ -73,11 +76,11 @@ export default function CatalogPage() {
         const bookRef = doc(db, 'books', editingBook.id);
         await updateDoc(bookRef, {
             ...bookPayload,
-            status: editingBook.status, // Mantém o status atual
-            borrowedByClientId: editingBook.borrowedByClientId, // Mantém dados de empréstimo
+            status: editingBook.status, 
+            borrowedByClientId: editingBook.borrowedByClientId, 
             borrowedByName: editingBook.borrowedByName,
             borrowedDate: editingBook.borrowedDate ? Timestamp.fromMillis(editingBook.borrowedDate) : null,
-            addedDate: Timestamp.fromMillis(editingBook.addedDate), // Mantém data de adição original
+            addedDate: Timestamp.fromMillis(editingBook.addedDate), 
         });
         toast({ title: 'Livro atualizado com sucesso!' });
       } else {
@@ -113,14 +116,12 @@ export default function CatalogPage() {
       try {
         const batch = writeBatch(db);
         
-        // Excluir atividades de empréstimo associadas
         const loanActivitiesQuery = query(collection(db, "loanActivities"), where("bookId", "==", bookId));
         const loanActivitiesSnapshot = await getDocs(loanActivitiesQuery);
-        loanActivitiesSnapshot.forEach(docSnap => {
+        loanActivitiesSnapshot.docs.forEach(docSnap => { // CORRECTED LINE
             batch.delete(docSnap.ref);
         });
         
-        // Excluir o livro
         const bookRef = doc(db, 'books', bookId);
         batch.delete(bookRef);
         
@@ -159,7 +160,7 @@ export default function CatalogPage() {
         }
       }
 
-      const updatedBookData = {
+      const updatedBookData: Partial<Book> = { // Use Partial<Book> or a more specific type
         status: action === 'loan' ? 'Emprestado' : ('Disponível'as Book['status']),
         borrowedByClientId: action === 'loan' ? finalClientId : null,
         borrowedByName: action === 'loan' ? clientName : null,
@@ -172,7 +173,7 @@ export default function CatalogPage() {
         bookTitle: book.title,
         clientId: finalClientId, 
         clientName: clientName, 
-        loanDate: Timestamp.now(), // Usar loanDate para ambos, mas o 'type' diferencia
+        loanDate: Timestamp.now(), 
         type: action,
       });
 
