@@ -109,7 +109,7 @@ const mockAdminUser: User = {
   uid: 'admin1',
   email: 'admin@example.com',
   name: 'Usuário Admin',
-  displayName: 'Usuário Admin', // Firebase's displayName
+  displayName: 'Usuário Admin', 
   role: 'admin',
   toJSON: jest.fn(() => ({ uid: 'admin1', email: 'admin@example.com', name: 'Usuário Admin', role: 'admin' })),
 };
