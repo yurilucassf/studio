@@ -1,8 +1,6 @@
 "use client"
 
-// Inspired by react-hot-toast library
-import * as React from "react"
-
+import * as React from "react" // Necessário para React.useRef
 import type {
   ToastActionElement,
   ToastProps,
@@ -18,7 +16,8 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement
 }
 
-const actionTypes = {
+// Exportar para uso no teste do reducer, se necessário
+export const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
   UPDATE_TOAST: "UPDATE_TOAST",
   DISMISS_TOAST: "DISMISS_TOAST",
@@ -27,14 +26,16 @@ const actionTypes = {
 
 let count = 0
 
-function genId() {
+// Exportar para mock no teste
+export function genId() {
   count = (count + 1) % Number.MAX_SAFE_INTEGER
   return count.toString()
 }
 
 type ActionType = typeof actionTypes
 
-type Action =
+// Exportar para uso no teste do reducer
+export type Action =
   | {
       type: ActionType["ADD_TOAST"]
       toast: ToasterToast
@@ -52,11 +53,22 @@ type Action =
       toastId?: ToasterToast["id"]
     }
 
-interface State {
+// Exportar para uso no teste do reducer
+export interface State {
   toasts: ToasterToast[]
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+// Mudar memoryState para ser uma referência exportável
+export const memoryStateRef = React.createRef<State>()
+// Inicializa o current da ref. Isso é feito uma vez quando o módulo é carregado.
+if (!memoryStateRef.current) {
+  memoryStateRef.current = { toasts: [] };
+}
+
+
+const listeners: Array<(state: State) => void> = []
 
 const addToRemoveQueue = (toastId: string) => {
   if (toastTimeouts.has(toastId)) {
@@ -65,7 +77,7 @@ const addToRemoveQueue = (toastId: string) => {
 
   const timeout = setTimeout(() => {
     toastTimeouts.delete(toastId)
-    dispatch({
+    originalDispatch({ // Usar originalDispatch
       type: "REMOVE_TOAST",
       toastId: toastId,
     })
@@ -92,17 +104,13 @@ export const reducer = (state: State, action: Action): State => {
 
     case "DISMISS_TOAST": {
       const { toastId } = action
-
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
         addToRemoveQueue(toastId)
-      } else {
+      } else if (state.toasts.length > 0) { // Adicionado verificação para evitar erro se toasts for vazio
         state.toasts.forEach((toast) => {
           addToRemoveQueue(toast.id)
         })
       }
-
       return {
         ...state,
         toasts: state.toasts.map((t) =>
@@ -129,15 +137,16 @@ export const reducer = (state: State, action: Action): State => {
   }
 }
 
-const listeners: Array<(state: State) => void> = []
-
-let memoryState: State = { toasts: [] }
-
-function dispatch(action: Action) {
-  memoryState = reducer(memoryState, action)
-  listeners.forEach((listener) => {
-    listener(memoryState)
-  })
+// Exportar dispatch como originalDispatch para testes
+export function originalDispatch(action: Action) {
+  if (memoryStateRef.current) { // Verificar se current não é null
+    memoryStateRef.current = reducer(memoryStateRef.current, action);
+    listeners.forEach((listener) => {
+      if (memoryStateRef.current) { // Verificar novamente
+        listener(memoryStateRef.current);
+      }
+    });
+  }
 }
 
 type Toast = Omit<ToasterToast, "id">
@@ -145,14 +154,14 @@ type Toast = Omit<ToasterToast, "id">
 function toast({ ...props }: Toast) {
   const id = genId()
 
-  const update = (props: ToasterToast) =>
-    dispatch({
+  const update = (updatedProps: ToasterToast) => // Corrigido nome do parâmetro
+    originalDispatch({
       type: "UPDATE_TOAST",
-      toast: { ...props, id },
+      toast: { ...updatedProps, id }, // Usar updatedProps
     })
-  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+  const dismiss = () => originalDispatch({ type: "DISMISS_TOAST", toastId: id })
 
-  dispatch({
+  originalDispatch({
     type: "ADD_TOAST",
     toast: {
       ...props,
@@ -172,22 +181,28 @@ function toast({ ...props }: Toast) {
 }
 
 function useToast() {
-  const [state, setState] = React.useState<State>(memoryState)
+  // Certificar que memoryStateRef.current existe ao inicializar o estado
+  const [state, setState] = React.useState<State>(memoryStateRef.current ?? { toasts: [] });
 
   React.useEffect(() => {
-    listeners.push(setState)
-    return () => {
-      const index = listeners.indexOf(setState)
-      if (index > -1) {
-        listeners.splice(index, 1)
-      }
+    // Se o estado no hook estiver dessincronizado com a ref global (ex: HMR ou reset no teste), atualize-o.
+    if (memoryStateRef.current && state !== memoryStateRef.current) {
+        setState(memoryStateRef.current);
     }
-  }, [state])
+
+    listeners.push(setState);
+    return () => {
+      const index = listeners.indexOf(setState);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }, []); // Dependência vazia para registrar/remover listener apenas uma vez
 
   return {
     ...state,
     toast,
-    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+    dismiss: (toastId?: string) => originalDispatch({ type: "DISMISS_TOAST", toastId }),
   }
 }
 
