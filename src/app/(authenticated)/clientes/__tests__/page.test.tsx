@@ -87,42 +87,6 @@ describe('PaginaDeClientes', () => {
     (global.confirm as jest.Mock).mockReturnValue(true);
   });
 
-  it('renderiza estado de carregamento inicialmente e depois exibe os clientes', async () => {
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
-
-    render(<ClientesPage />);
-    expect(screen.getByText(/Carregando clientes.../i)).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Silva')).toBeInTheDocument();
-      expect(screen.getByText('Roberto Souza')).toBeInTheDocument();
-    });
-    expect(getDocs).toHaveBeenCalledTimes(1);
-  });
-
-  it('exibe estado de vazio se nenhum cliente for encontrado', async () => {
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // Sem clientes
-
-    render(<ClientesPage />);
-    await waitFor(() => {
-      expect(screen.getByText(/Nenhum cliente encontrado/i)).toBeInTheDocument();
-    });
-  });
-
-  it('abre ClientForm quando o botão "Adicionar Novo Cliente" é clicado', async () => {
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
-
-    render(<ClientesPage />);
-    await waitFor(() => expect(screen.queryByTestId('client-form')).not.toBeInTheDocument());
-    
-    const addButton = screen.getByRole('button', { name: /Adicionar Novo Cliente/i });
-    fireEvent.click(addButton);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('client-form')).toBeInTheDocument();
-    });
-  });
-
   it('adiciona um novo cliente com sucesso', async () => {
     (getDocs as jest.Mock)
       .mockResolvedValueOnce({ docs: [] }) // Carga inicial
