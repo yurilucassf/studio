@@ -16,33 +16,36 @@ jest.mock('@/hooks/use-toast', () => ({
 
 // Mock para os componentes Select do shadcn/ui
 jest.mock('@/components/ui/select', () => {
+  const OriginalReact = require('react'); // Importar React dentro da fábrica
   const originalModule = jest.requireActual('@/components/ui/select');
   return {
     ...originalModule,
-    Select: ({ children, onValueChange, defaultValue }: { children: React.ReactNode, onValueChange: (value: string) => void, defaultValue?: string }) => {
-      // Mantém o estado interno para simular a seleção
-      const [currentValue, setCurrentValue] = React.useState(defaultValue);
+    Select: ({ children, onValueChange, defaultValue, ...props }: { children: React.ReactNode, onValueChange: (value: string) => void, defaultValue?: string, [key: string]: any }) => {
+      const [currentValue, setCurrentValue] = OriginalReact.useState(defaultValue);
       const handleChange = (value: string) => {
         setCurrentValue(value);
         if (onValueChange) {
           onValueChange(value);
         }
       };
-      return <div data-testid="select-mock" data-current-value={currentValue} onChange={(e: any) => handleChange(e.target.value)}>{children}</div>;
+      // Passar props desconhecidas para o div para compatibilidade com FormField/Controller
+      return <div data-testid="select-mock" {...props} data-current-value={currentValue} onChange={(e: any) => handleChange(e.target.value)}>{children}</div>;
     },
-    SelectTrigger: ({ children }: { children: React.ReactNode }) => <button type="button" role="combobox">{children}</button>,
+    SelectTrigger: ({ children, ...props }: { children: React.ReactNode, [key: string]: any }) => <button type="button" role="combobox" {...props}>{children}</button>,
     SelectValue: ({ placeholder }: { placeholder: string }) => <span data-testid="select-value-mock">{placeholder}</span>,
     SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    SelectItem: ({ children, value }: { children: React.ReactNode, value: string }) => (
-      <div role="option" data-value={value} onClick={() => {
-        // Simula a propagação da mudança para o mock do Select pai
+    SelectItem: ({ children, value, ...props }: { children: React.ReactNode, value: string, [key: string]: any }) => (
+      <div role="option" data-value={value} {...props} onClick={() => {
         const selectMock = document.querySelector('[data-testid="select-mock"]');
         if (selectMock) {
-          const changeEvent = new Event('change', { bubbles: true });
-          // Precisamos de uma maneira de passar o valor para o Select mockado
-          // Esta é uma forma, mas pode precisar de ajuste dependendo de como o FormField se integra
-          Object.defineProperty(changeEvent, 'target', { writable: false, value: { value } });
-          selectMock.dispatchEvent(changeEvent);
+          // Para simular a atualização do valor no react-hook-form, precisamos que o onValueChange seja chamado.
+          // A forma mais simples é assumir que o Select pai tem uma prop para isso ou que o Controller do RHF a fornece.
+          // O mock do 'Select' já chama onValueChange, então um clique aqui pode ser só para simular a interação do usuário.
+          // A lógica de atualização do valor real está no mock do Select.
+          const selectElement = selectMock.closest('[data-testid="select-mock"]');
+          if (selectElement && typeof (selectElement as any).onChange === 'function') {
+             (selectElement as any).onChange({ target: { value } });
+          }
         }
       }}>
         {children}
@@ -67,9 +70,9 @@ describe('BookForm', () => {
     expect(screen.getByLabelText(/Título/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Autor/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/ISBN/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Gênero/i)).toBeInTheDocument(); // Label para o Select
+    expect(screen.getByLabelText(/Gênero/i)).toBeInTheDocument(); 
     expect(screen.getByLabelText(/Ano de Publicação/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toBeInTheDocument();
+    // expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toBeInTheDocument(); // Campo opcional, não mais obrigatório
     expect(screen.getByRole('button', { name: /Salvar Livro/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Cancelar/i })).toBeInTheDocument();
   });
@@ -82,7 +85,7 @@ describe('BookForm', () => {
       isbn: '1234567890123',
       genre: BOOK_GENRES[0],
       publicationYear: 2022,
-      coverImageUrl: 'http://example.com/cover.jpg',
+      coverImageUrl: '', // Não precisa mais de URL
       status: 'Disponível',
       addedDate: Date.now(),
     };
@@ -91,15 +94,19 @@ describe('BookForm', () => {
     expect(screen.getByLabelText(/Título/i)).toHaveValue(initialData.title);
     expect(screen.getByLabelText(/Autor/i)).toHaveValue(initialData.author);
     expect(screen.getByLabelText(/ISBN/i)).toHaveValue(initialData.isbn);
-    // Para o Select mockado, a verificação do valor é mais complexa.
-    // Verificamos se o placeholder do SelectValue (mockado) reflete o gênero.
-    // Ou, se o mock do Select mantiver o estado, verificamos esse estado.
-    // O mock atual usa data-current-value no div do Select.
-    const selectElement = screen.getByTestId('select-mock');
+    
+    const selectElement = screen.getByTestId('select-mock'); // O FormItem do Gênero
+    // O valor do Select é gerenciado pelo Controller do react-hook-form.
+    // O mock do Select deve refletir o defaultValue passado pelo Controller.
+    // O Controller passa o valor através da prop 'value' para o componente 'Select' mockado.
+    // O mock do 'Select' pega defaultValue e o usa para o estado inicial.
+    // Vamos verificar se o data-current-value no mock do Select reflete o gênero.
+    // (O Controller passa `defaultValue` para o `Select` que o mock usa)
     expect(selectElement).toHaveAttribute('data-current-value', initialData.genre);
 
+
     expect(screen.getByLabelText(/Ano de Publicação/i)).toHaveValue(initialData.publicationYear);
-    expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toHaveValue(initialData.coverImageUrl);
+    // expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toHaveValue(initialData.coverImageUrl); // Removido
   });
 
   it('chama onSubmit com os dados do formulário quando submetido para um novo livro', async () => {
@@ -107,20 +114,15 @@ describe('BookForm', () => {
 
     fireEvent.change(screen.getByLabelText(/Título/i), { target: { value: 'Novo Livro Interessante' } });
     fireEvent.change(screen.getByLabelText(/Autor/i), { target: { value: 'Novo Autor Criativo' } });
-    fireEvent.change(screen.getByLabelText(/ISBN/i), { target: { value: '9876543210' } }); // 10 chars
+    fireEvent.change(screen.getByLabelText(/ISBN/i), { target: { value: '9876543210' } }); 
     fireEvent.change(screen.getByLabelText(/Ano de Publicação/i), { target: { value: '2023' } });
     
-    // Interação com o Select mockado
-    const genreToSelect = BOOK_GENRES[1]; // "Fantasia"
-    const genreTrigger = screen.getByRole('combobox', { name: /Gênero/i }); // O label é associado ao trigger pelo FormLabel
-    fireEvent.click(genreTrigger); // Abre as opções (no mock, isso não faz muito visualmente)
+    const genreToSelect = BOOK_GENRES[1]; 
+    const genreTrigger = screen.getByRole('combobox', { name: /Gênero/i });
+    fireEvent.mouseDown(genreTrigger); // Abre as opções
 
-    // Encontra a opção pelo seu data-value (conforme o mock do SelectItem) e clica nela
-    // Esta parte é crucial e depende de como o mock foi implementado.
-    // O mock atual do SelectItem simula o click e tenta atualizar o Select pai.
-    const selectMockContainer = screen.getByTestId('select-mock'); // O container do Select mockado
-    fireEvent.change(selectMockContainer, { target: { value: genreToSelect } });
-
+    const optionElement = await screen.findByRole('option', { name: genreToSelect, hidden: false });
+    fireEvent.click(optionElement); 
 
     fireEvent.click(screen.getByRole('button', { name: /Salvar Livro/i }));
 
@@ -147,7 +149,7 @@ describe('BookForm', () => {
       publicationYear: 2020,
       status: 'Disponível',
       addedDate: Date.now(),
-      coverImageUrl: 'http://example.com/cover.jpg',
+      coverImageUrl: '',
     };
     renderBookForm(initialData);
 
@@ -183,6 +185,8 @@ describe('BookForm', () => {
     expect(await screen.findByText('Título é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('Autor é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('ISBN deve ter pelo menos 10 caracteres.')).toBeInTheDocument();
+    // Para o Select, o erro pode ser mais genérico ou específico dependendo de como RHF e Zod interagem com o mock
+    // A mensagem "Gênero é obrigatório." deve aparecer se o valor não for selecionado.
     expect(await screen.findByText('Gênero é obrigatório.')).toBeInTheDocument(); 
     
     expect(mockOnSubmit).not.toHaveBeenCalled();
