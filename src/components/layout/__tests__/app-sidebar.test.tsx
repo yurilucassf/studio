@@ -3,7 +3,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { AppSidebar } from '../app-sidebar';
-import { SidebarProvider } from '@/components/ui/sidebar'; // Import SidebarProvider
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
@@ -68,39 +68,39 @@ const mockAdminUser: User = {
 
 describe('AppSidebar', () => {
   let mockSetUser: jest.Mock;
-  let mockUseAuthStore: jest.MockedFunction<typeof useAuthStore>;
-  let mockUseRouter: jest.MockedFunction<typeof useRouter>;
-  let mockUsePathname: jest.MockedFunction<typeof usePathname>;
-  let mockToast: jest.Mock;
+  let mockUseAuthStoreHook: jest.MockedFunction<typeof useAuthStore>;
+  let mockUseRouterHook: jest.MockedFunction<typeof useRouter>;
+  let mockUsePathnameHook: jest.MockedFunction<typeof usePathname>;
+  let mockToastHook: jest.Mock;
   let mockRouterPush: jest.Mock;
 
   beforeEach(() => {
     mockSetUser = jest.fn();
-    mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+    mockUseAuthStoreHook = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
     
     mockRouterPush = jest.fn();
-    mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
-    mockUseRouter.mockReturnValue({ push: mockRouterPush, replace: jest.fn(), prefetch: jest.fn(), back: jest.fn(), forward: jest.fn() });
+    mockUseRouterHook = useRouter as jest.MockedFunction<typeof useRouter>;
+    mockUseRouterHook.mockReturnValue({ push: mockRouterPush, replace: jest.fn(), prefetch: jest.fn(), back: jest.fn(), forward: jest.fn() });
 
-    mockUsePathname = usePathname as jest.MockedFunction<typeof usePathname>;
+    mockUsePathnameHook = usePathname as jest.MockedFunction<typeof usePathname>;
     
-    mockToast = jest.fn();
-    (useToast as jest.Mock).mockReturnValue({ toast: mockToast });
+    mockToastHook = jest.fn();
+    (useToast as jest.Mock).mockReturnValue({ toast: mockToastHook });
 
     (signOut as jest.Mock).mockClear();
     mockSetUser.mockClear();
-    mockToast.mockClear();
+    mockToastHook.mockClear();
     mockRouterPush.mockClear();
   });
 
   const setup = (currentUser: User | null, currentPath: string = '/dashboard') => {
-    mockUseAuthStore.mockReturnValue({
+    mockUseAuthStoreHook.mockReturnValue({
       user: currentUser,
       setUser: mockSetUser,
       isLoading: false,
       setLoading: jest.fn(),
     });
-    mockUsePathname.mockReturnValue(currentPath);
+    mockUsePathnameHook.mockReturnValue(currentPath);
     render(
       <SidebarProvider>
         <AppSidebar />
@@ -114,7 +114,6 @@ describe('AppSidebar', () => {
     expect(screen.getByText('Catálogo de Livros')).toBeInTheDocument();
     expect(screen.getByText('Clientes')).toBeInTheDocument();
     expect(screen.getByText(mockEmployeeUser.name!)).toBeInTheDocument();
-    // O papel é exibido como texto
     expect(screen.getByText('Funcionário')).toBeInTheDocument();
   });
 
@@ -127,14 +126,11 @@ describe('AppSidebar', () => {
     setup(mockAdminUser);
     expect(screen.getByText('Funcionários')).toBeInTheDocument();
     expect(screen.getByText(mockAdminUser.name!)).toBeInTheDocument();
-    // O papel é exibido como texto
     expect(screen.getByText('Administrador')).toBeInTheDocument();
   });
 
   it('chama signOut e atualiza usuário ao clicar em Sair', async () => {
     setup(mockAdminUser);
-    // O botão pode não ter o texto "Sair" diretamente visível se estiver colapsado,
-    // mas o aria-label deve estar presente.
     const logoutButton = screen.getByRole('button', { name: /Sair/i });
     
     fireEvent.click(logoutButton);
@@ -143,7 +139,7 @@ describe('AppSidebar', () => {
       expect(signOut).toHaveBeenCalledTimes(1);
     });
     expect(mockSetUser).toHaveBeenCalledWith(null);
-    expect(mockToast).toHaveBeenCalledWith({ title: 'Logout realizado com sucesso!' });
+    expect(mockToastHook).toHaveBeenCalledWith({ title: 'Logout realizado com sucesso!' });
     expect(mockRouterPush).toHaveBeenCalledWith('/login');
   });
 
@@ -175,11 +171,11 @@ describe('AppSidebar', () => {
         name: undefined 
     };
     setup(userWithoutName);
-    // O fallback de Avatar gera iniciais do nome ou email. "noname@example.com" -> NO
     expect(screen.getByText('NO')).toBeInTheDocument(); 
   });
 
   it('lida com erro no signOut', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     (signOut as jest.Mock).mockRejectedValueOnce(new Error('Sign out failed'));
     setup(mockAdminUser);
     const logoutButton = screen.getByRole('button', { name: /Sair/i });
@@ -189,8 +185,10 @@ describe('AppSidebar', () => {
       expect(signOut).toHaveBeenCalledTimes(1);
     });
     expect(mockSetUser).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith({ title: 'Erro ao fazer logout', variant: 'destructive' });
+    expect(mockToastHook).toHaveBeenCalledWith({ title: 'Erro ao fazer logout', variant: 'destructive' });
     expect(mockRouterPush).not.toHaveBeenCalledWith('/login');
+    
+    consoleErrorSpy.mockRestore();
   });
 
 });
