@@ -55,7 +55,9 @@ describe('BookForm', () => {
     expect(screen.getByLabelText(/Título/i)).toHaveValue(initialData.title);
     expect(screen.getByLabelText(/Autor/i)).toHaveValue(initialData.author);
     expect(screen.getByLabelText(/ISBN/i)).toHaveValue(initialData.isbn);
-    expect(screen.getByLabelText(/Gênero/i)).toHaveTextContent(initialData.genre);
+    // For Select, check the trigger's displayed value if possible, or ensure correct initial value is passed
+    // Here, checking if the SelectTrigger displays the correct genre text content.
+    expect(screen.getByRole('combobox', { name: /Gênero/i })).toHaveTextContent(initialData.genre);
     expect(screen.getByLabelText(/Ano de Publicação/i)).toHaveValue(initialData.publicationYear);
     expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toHaveValue(initialData.coverImageUrl);
   });
@@ -65,13 +67,15 @@ describe('BookForm', () => {
 
     fireEvent.change(screen.getByLabelText(/Título/i), { target: { value: 'Novo Livro' } });
     fireEvent.change(screen.getByLabelText(/Autor/i), { target: { value: 'Novo Autor' } });
-    fireEvent.change(screen.getByLabelText(/ISBN/i), { target: { value: '9876543210' } });
+    fireEvent.change(screen.getByLabelText(/ISBN/i), { target: { value: '9876543210' } }); // 10 chars
     fireEvent.change(screen.getByLabelText(/Ano de Publicação/i), { target: { value: '2023' } });
     
-    // For Select, we need to find the trigger, click it, then click the item
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Gênero/i }));
-    await screen.findByText(BOOK_GENRES[1]); // Wait for options to appear
-    fireEvent.click(screen.getByText(BOOK_GENRES[1]));
+    const genreTrigger = screen.getByRole('combobox', { name: /Gênero/i });
+    fireEvent.mouseDown(genreTrigger); // Opens the dropdown
+
+    const genreToSelect = BOOK_GENRES[1];
+    const optionElement = await screen.findByRole('option', { name: genreToSelect });
+    fireEvent.click(optionElement); // Selects the genre
 
     fireEvent.click(screen.getByRole('button', { name: /Salvar Livro/i }));
 
@@ -81,9 +85,9 @@ describe('BookForm', () => {
         title: 'Novo Livro',
         author: 'Novo Autor',
         isbn: '9876543210',
-        genre: BOOK_GENRES[1],
+        genre: genreToSelect,
         publicationYear: 2023,
-        coverImageUrl: '', // Optional field, empty by default
+        coverImageUrl: '', 
       });
     });
   });
@@ -93,11 +97,12 @@ describe('BookForm', () => {
       id: '1',
       title: 'Livro Original',
       author: 'Autor Original',
-      isbn: '1112223334445',
+      isbn: '1112223334445', // 13 chars
       genre: BOOK_GENRES[0],
       publicationYear: 2020,
       status: 'Disponível',
       addedDate: Date.now(),
+      coverImageUrl: 'http://example.com/cover.jpg',
     };
     renderBookForm(initialData);
 
@@ -110,11 +115,11 @@ describe('BookForm', () => {
       expect(mockOnSubmit).toHaveBeenCalledTimes(1);
       expect(mockOnSubmit).toHaveBeenCalledWith({
         title: 'Título Atualizado',
-        author: initialData.author, // Not changed
-        isbn: initialData.isbn, // Not changed
-        genre: initialData.genre, // Not changed
+        author: initialData.author, 
+        isbn: initialData.isbn, 
+        genre: initialData.genre, 
         publicationYear: 2021,
-        coverImageUrl: '', // Assuming it was empty or not changed
+        coverImageUrl: initialData.coverImageUrl, 
       });
     });
   });
@@ -128,18 +133,14 @@ describe('BookForm', () => {
 
   it('shows validation errors for required fields if empty (integration with Zod)', async () => {
     renderBookForm();
-    // Attempt to submit without filling required fields
     fireEvent.click(screen.getByRole('button', { name: /Salvar Livro/i }));
 
-    // Check for Zod error messages (these depend on your schema)
-    // For `react-hook-form` and `zodResolver`, errors appear after submit attempt
     expect(await screen.findByText('Título é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('Autor é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('ISBN deve ter pelo menos 10 caracteres.')).toBeInTheDocument();
     expect(await screen.findByText('Gênero é obrigatório.')).toBeInTheDocument();
-    // publicationYear might have a default, so it might not show an error initially if not touched
-
-    // onSubmit should not have been called if validation failed
+    
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 });
+
