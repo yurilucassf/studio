@@ -1,7 +1,8 @@
 import type { User as FirebaseUser } from 'firebase/auth';
+import type { Timestamp } from 'firebase/firestore';
 
 export interface User extends FirebaseUser {
-  role?: 'admin' | 'employee'; // 'funcionario' is 'employee'
+  role?: 'admin' | 'employee';
   name?: string;
 }
 
@@ -17,9 +18,9 @@ export interface Book {
   status: BookStatus;
   coverImageUrl?: string;
   borrowedByClientId?: string | null;
-  borrowedByName?: string | null; // For display convenience
-  borrowedDate?: number | null; // Timestamp
-  addedDate: number; // Timestamp for "Últimos Livros Adicionados"
+  borrowedByName?: string | null; 
+  borrowedDate?: number | null; // Timestamp (milliseconds) on client, Firestore Timestamp on server
+  addedDate: number; // Timestamp (milliseconds) on client, Firestore Timestamp on server
 }
 
 export interface Client {
@@ -38,9 +39,11 @@ export interface Employee {
 
 export interface LoanActivity {
   id: string;
+  bookId: string;
   bookTitle: string;
-  clientNameOrId: string; // Could be name if available, or ID
-  loanDate: number; // Timestamp
+  clientId?: string; // Optional as it might not be relevant for all activities or if client is deleted
+  clientName: string; 
+  loanDate: number; // Timestamp (milliseconds) on client, Firestore Timestamp on server
   type: 'loan' | 'return';
 }
 

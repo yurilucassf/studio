@@ -1,37 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Book, Users, BookCheck, BookX, Users2, ListChecks, History } from 'lucide-react';
+import { Book, Users, BookCheck, BookX, Users2, ListChecks, History, Loader2 } from 'lucide-react';
 import type { Book as BookType, LoanActivity, DashboardStats } from '@/lib/types';
 import { useAuthStore } from '@/hooks/use-auth-store';
-// Placeholder for actual data fetching functions
-// import { getDashboardStats, getRecentBooks, getRecentLoans } from '@/lib/services/dashboardService';
-
-// Mock data for demonstration
-const mockStats: DashboardStats = {
-  totalBooks: 1250,
-  borrowedBooks: 320,
-  availableBooks: 930,
-  totalClients: 450,
-  totalEmployees: 12,
-};
-
-const mockRecentBooks: BookType[] = [
-  { id: '1', title: 'A Arte da Guerra', author: 'Sun Tzu', isbn: '978-8576876543', genre: 'Filosofia', publicationYear: 2023, status: 'Disponível', addedDate: new Date('2024-07-15').getTime() },
-  { id: '2', title: 'Sapiens: Uma Breve História da Humanidade', author: 'Yuval Noah Harari', isbn: '978-8535923870', genre: 'História', publicationYear: 2024, status: 'Emprestado', borrowedDate: new Date('2024-07-20').getTime(), borrowedByClientId: 'client123', addedDate: new Date('2024-07-10').getTime() },
-  { id: '3', title: 'O Hobbit', author: 'J.R.R. Tolkien', isbn: '978-0547928227', genre: 'Fantasia', publicationYear: 2022, status: 'Disponível', addedDate: new Date('2024-07-01').getTime() },
-];
-
-const mockRecentLoans: LoanActivity[] = [
-  { id: 'loan1', bookTitle: 'Sapiens', clientNameOrId: 'Ana Silva', loanDate: new Date('2024-07-20').getTime(), type: 'loan' },
-  { id: 'loan2', bookTitle: '1984', clientNameOrId: 'Carlos Pereira (ID: client456)', loanDate: new Date('2024-07-18').getTime(), type: 'loan' },
-  { id: 'loan3', bookTitle: 'O Pequeno Príncipe', clientNameOrId: 'Sofia Costa', loanDate: new Date('2024-07-15').getTime(), type: 'return' },
-];
-
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -39,23 +18,72 @@ export default function DashboardPage() {
   const [recentLoans, setRecentLoans] = useState<LoanActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuthStore();
+  const { toast } = useToast();
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Fetch stats
+      const booksCollection = collection(db, 'books');
+      const clientsCollection = collection(db, 'clients');
+      const employeesCollection = collection(db, 'employees');
+      const loanActivitiesCollection = collection(db, 'loanActivities');
+
+      const booksSnapshot = await getDocs(booksCollection);
+      const borrowedBooksQuery = query(booksCollection, where('status', '==', 'Emprestado'));
+      const borrowedBooksSnapshot = await getDocs(borrowedBooksQuery);
+      const clientsSnapshot = await getDocs(clientsCollection);
+      const employeesSnapshot = await getDocs(employeesCollection);
+
+      const totalBooks = booksSnapshot.size;
+      const borrowedBooks = borrowedBooksSnapshot.size;
+      const fetchedStats: DashboardStats = {
+        totalBooks,
+        borrowedBooks,
+        availableBooks: totalBooks - borrowedBooks,
+        totalClients: clientsSnapshot.size,
+        totalEmployees: employeesSnapshot.size,
+      };
+      setStats(fetchedStats);
+
+      // Fetch recent books
+      const recentBooksQuery = query(booksCollection, orderBy('addedDate', 'desc'), limit(3));
+      const recentBooksSnapshot = await getDocs(recentBooksQuery);
+      const fetchedRecentBooks = recentBooksSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          addedDate: (data.addedDate as Timestamp)?.toMillis() || Date.now(),
+          borrowedDate: (data.borrowedDate as Timestamp)?.toMillis() || null,
+        } as BookType;
+      });
+      setRecentBooks(fetchedRecentBooks);
+
+      // Fetch recent loans
+      const recentLoansQuery = query(loanActivitiesCollection, orderBy('loanDate', 'desc'), limit(3));
+      const recentLoansSnapshot = await getDocs(recentLoansQuery);
+      const fetchedRecentLoans = recentLoansSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          loanDate: (data.loanDate as Timestamp)?.toMillis() || Date.now(),
+        } as LoanActivity;
+      });
+      setRecentLoans(fetchedRecentLoans);
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      toast({ title: "Erro ao carregar dados do painel", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    // Simulate data fetching
-    const fetchData = async () => {
-      setIsLoading(true);
-      // Replace with actual API calls:
-      // const fetchedStats = await getDashboardStats();
-      // const fetchedBooks = await getRecentBooks(3);
-      // const fetchedLoans = await getRecentLoans(3);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
-      setStats(mockStats);
-      setRecentBooks(mockRecentBooks);
-      setRecentLoans(mockRecentLoans);
-      setIsLoading(false);
-    };
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const isAdmin = user?.role === 'admin';
 
@@ -68,7 +96,7 @@ export default function DashboardPage() {
         <StatCard title="Livros Emprestados" value={stats?.borrowedBooks ?? 0} icon={BookX} isLoading={isLoading} description="Atualmente com clientes" />
         <StatCard title="Livros Disponíveis" value={stats?.availableBooks ?? 0} icon={BookCheck} isLoading={isLoading} description="Prontos para empréstimo" />
         <StatCard title="Total de Clientes" value={stats?.totalClients ?? 0} icon={Users} isLoading={isLoading} description="Clientes registrados" />
-        {(isAdmin || stats?.totalEmployees) && (
+        {(isAdmin || (stats && stats.totalEmployees > 0) ) && ( // Show if admin or if there are employees
           <StatCard title="Total de Funcionários" value={stats?.totalEmployees ?? 0} icon={Users2} isLoading={isLoading} description="Equipe da biblioteca" />
         )}
       </div>
@@ -80,7 +108,7 @@ export default function DashboardPage() {
             <CardDescription>Os 3 livros mais recentes no catálogo.</CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && recentBooks.length === 0 ? (
               <Table>
                 <TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Autor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
                 <TableBody>
@@ -122,7 +150,7 @@ export default function DashboardPage() {
             <CardDescription>Os 3 empréstimos/devoluções mais recentes.</CardDescription>
           </CardHeader>
           <CardContent>
-             {isLoading ? (
+             {isLoading && recentLoans.length === 0 ? (
               <Table>
                 <TableHeader><TableRow><TableHead>Livro</TableHead><TableHead>Cliente</TableHead><TableHead>Data</TableHead><TableHead>Tipo</TableHead></TableRow></TableHeader>
                 <TableBody>
@@ -134,7 +162,7 @@ export default function DashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Livro</TableHead>
-                    <TableHead>Cliente/ID</TableHead>
+                    <TableHead>Cliente</TableHead>
                     <TableHead>Data</TableHead>
                      <TableHead className="text-right">Tipo</TableHead>
                   </TableRow>
@@ -143,7 +171,7 @@ export default function DashboardPage() {
                   {recentLoans.map((loan) => (
                     <TableRow key={loan.id}>
                       <TableCell className="font-medium">{loan.bookTitle}</TableCell>
-                      <TableCell>{loan.clientNameOrId}</TableCell>
+                      <TableCell>{loan.clientName}</TableCell>
                       <TableCell>{new Date(loan.loanDate).toLocaleDateString()}</TableCell>
                       <TableCell className="text-right">
                         <Badge variant={loan.type === 'loan' ? 'destructive' : 'default'} className={loan.type === 'loan' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}>

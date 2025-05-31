@@ -1,6 +1,6 @@
+
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -12,68 +12,64 @@ import type { Employee } from '@/lib/types';
 import { Loader2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+// Define a type for the form's internal state, covering all possible fields.
+// Email and password are optional here because they only exist in Add mode.
+// The specific Zod schema (AddEmployeeSchema or EditEmployeeSchema) will enforce their requirement.
+type EmployeeFormValues = {
+  name: string;
+  email?: string;
+  password?: string;
+  role: 'employee' | 'admin';
+};
+
 interface EmployeeFormProps {
-  onSubmit: (data: Employee, password?: string) => Promise<void>;
+  onSubmit: (data: AddEmployeeFormData | EditEmployeeFormData) => Promise<void>;
   initialData?: Employee | null;
   onCancel: () => void;
   currentUserIsAdmin?: boolean;
   currentUserId?: string;
   isLastAdmin?: boolean;
+  isSubmitting?: boolean;
 }
 
-export function EmployeeForm({ onSubmit, initialData, onCancel, currentUserIsAdmin, currentUserId, isLastAdmin }: EmployeeFormProps) {
-  const [isLoading, setIsLoading] = useState(false);
+export function EmployeeForm({ 
+  onSubmit: pageOnSubmit, // Renamed prop for clarity
+  initialData, 
+  onCancel, 
+  currentUserIsAdmin, 
+  currentUserId, 
+  isLastAdmin, 
+  isSubmitting 
+}: EmployeeFormProps) {
   const { toast } = useToast();
   const isEditing = !!initialData;
 
   const formSchema = isEditing ? EditEmployeeSchema : AddEmployeeSchema;
-  type FormData = isEditing ? EditEmployeeFormData : AddEmployeeFormData;
 
-  const form = useForm<FormData>({
+  const form = useForm<EmployeeFormValues>({ // Use EmployeeFormValues here
     resolver: zodResolver(formSchema),
-    defaultValues: initialData ? {
-      name: initialData.name,
-      role: initialData.role,
-      ...(isEditing ? {} : { email: initialData.email, password: '' }) // email/password only for add form
-    } : {
-      name: '',
-      email: '',
-      password: '',
-      role: 'employee',
-    } as FormData,
+    defaultValues: initialData 
+      ? { name: initialData.name, role: initialData.role } // email & password will be undefined by default, which is fine for EmployeeFormValues
+      : { name: '', email: '', password: '', role: 'employee' },
   });
 
-  const handleFormSubmit = async (data: FormData) => {
-    setIsLoading(true);
-
+  // This handler is called by react-hook-form's handleSubmit after successful validation.
+  // The 'validatedData' will be typed according to the schema used (AddEmployeeFormData or EditEmployeeFormData).
+  const handleValidatedFormSubmit = async (validatedData: AddEmployeeFormData | EditEmployeeFormData) => {
     if (isEditing && initialData) {
-      if (initialData.id === currentUserId && initialData.role === 'admin' && data.role === 'employee' && isLastAdmin) {
+      // validatedData here is EditEmployeeFormData
+      const currentRoleSelection = (validatedData as EditEmployeeFormData).role;
+      if (initialData.id === currentUserId && initialData.role === 'admin' && currentRoleSelection === 'employee' && isLastAdmin) {
          toast({ title: "Ação não permitida", description: "Você não pode remover seu próprio status de administrador se for o único.", variant: "destructive" });
-         setIsLoading(false);
-         return;
+         return; // Do not proceed to call pageOnSubmit
       }
-      const employeePayload: Employee = {
-        ...initialData,
-        name: data.name,
-        role: data.role,
-      };
-      await onSubmit(employeePayload);
-    } else if (!isEditing) {
-      const addData = data as AddEmployeeFormData;
-      const employeePayload: Employee = {
-        id: '', // Will be set by backend
-        name: addData.name,
-        email: addData.email,
-        role: addData.role,
-      };
-      await onSubmit(employeePayload, addData.password);
     }
-    setIsLoading(false);
+    await pageOnSubmit(validatedData); // Call the submit handler passed from the page
   };
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6 p-1">
+      <form onSubmit={form.handleSubmit(handleValidatedFormSubmit)} className="space-y-6 p-1">
         <FormField
           control={form.control}
           name="name"
@@ -81,7 +77,7 @@ export function EmployeeForm({ onSubmit, initialData, onCancel, currentUserIsAdm
             <FormItem>
               <FormLabel>Nome Completo</FormLabel>
               <FormControl>
-                <Input placeholder="Ex: Maria Silva" {...field} disabled={isLoading} />
+                <Input placeholder="Ex: Maria Silva" {...field} disabled={isSubmitting} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -90,12 +86,12 @@ export function EmployeeForm({ onSubmit, initialData, onCancel, currentUserIsAdm
         {!isEditing && (
           <FormField
             control={form.control}
-            name="email"
-            render={({ field }) => ( // Type assertion needed if field does not exist on EditEmployeeFormData
+            name="email" // Refers to EmployeeFormValues.email
+            render={({ field }) => ( 
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="Ex: maria.silva@example.com" {...field as any} disabled={isLoading} />
+                  <Input type="email" placeholder="Ex: maria.silva@example.com" {...field} disabled={isSubmitting} value={field.value ?? ''} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -105,12 +101,12 @@ export function EmployeeForm({ onSubmit, initialData, onCancel, currentUserIsAdm
         {!isEditing && (
           <FormField
             control={form.control}
-            name="password"
+            name="password" // Refers to EmployeeFormValues.password
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Senha Inicial</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="Mínimo 6 caracteres" {...field as any} disabled={isLoading} />
+                  <Input type="password" placeholder="Mínimo 6 caracteres" {...field} disabled={isSubmitting} value={field.value ?? ''} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -126,7 +122,7 @@ export function EmployeeForm({ onSubmit, initialData, onCancel, currentUserIsAdm
               <Select 
                 onValueChange={field.onChange} 
                 defaultValue={field.value} 
-                disabled={isLoading || (isEditing && initialData?.id === currentUserId && isLastAdmin && initialData?.role === 'admin')}
+                disabled={isSubmitting || (isEditing && initialData?.id === currentUserId && isLastAdmin && initialData?.role === 'admin')}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -146,11 +142,11 @@ export function EmployeeForm({ onSubmit, initialData, onCancel, currentUserIsAdm
           )}
         />
         <div className="flex justify-end gap-3 pt-4">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Salvar Funcionário
           </Button>
         </div>

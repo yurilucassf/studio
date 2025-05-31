@@ -11,7 +11,7 @@ import type { Client } from '@/lib/types';
 import { Loader2, Save } from 'lucide-react';
 
 interface ClientFormProps {
-  onSubmit: (data: Client) => Promise<void>;
+  onSubmit: (data: ClientFormData) => Promise<void>; // Changed from Client to ClientFormData
   initialData?: Client | null;
   onCancel: () => void;
 }
@@ -21,7 +21,11 @@ export function ClientForm({ onSubmit, initialData, onCancel }: ClientFormProps)
 
   const form = useForm<ClientFormData>({
     resolver: zodResolver(ClientSchema),
-    defaultValues: initialData || {
+    defaultValues: initialData ? {
+      name: initialData.name,
+      email: initialData.email,
+      phone: initialData.phone || '',
+    } : {
       name: '',
       email: '',
       phone: '',
@@ -30,12 +34,7 @@ export function ClientForm({ onSubmit, initialData, onCancel }: ClientFormProps)
 
   const handleFormSubmit = async (data: ClientFormData) => {
     setIsLoading(true);
-    const clientPayload: Client = {
-      ...(initialData || {}), // Keep ID if editing
-      ...data,
-      id: initialData?.id || '', // Will be set by backend if new
-    };
-    await onSubmit(clientPayload);
+    await onSubmit(data); // Pass ClientFormData directly
     setIsLoading(false);
   };
 

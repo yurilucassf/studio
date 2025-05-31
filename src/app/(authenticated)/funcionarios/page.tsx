@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, UserCog, ShieldAlert, Loader2 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
@@ -11,13 +11,11 @@ import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import { db, auth as firebaseAuth } from '@/lib/firebase'; // Renamed auth to firebaseAuth to avoid conflict
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, query, orderBy } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth'; // For creating and potentially deleting auth users
+import type { AddEmployeeFormData, EditEmployeeFormData } from '@/lib/schemas';
 
-// Mock data
-const mockEmployees: Employee[] = [
-  { id: 'admin001', name: 'Admin Geral', email: 'admin@example.com', role: 'admin' },
-  { id: 'emp001', name: 'Maria Oliveira', email: 'maria.o@example.com', role: 'employee' },
-  { id: 'emp002', name: 'João Santos', email: 'joao.s@example.com', role: 'employee' },
-];
 
 export default function FuncionariosPage() {
   const { user } = useAuthStore();
@@ -25,61 +23,91 @@ export default function FuncionariosPage() {
   const { toast } = useToast();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPage, setIsLoadingPage] = useState(true); // For overall page readiness
+  const [isSubmitting, setIsSubmitting] = useState(false); // For form operations
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   const isAdmin = user?.role === 'admin';
 
+   const fetchEmployees = useCallback(async () => {
+    if (!isAdmin) {
+      setIsLoadingPage(false);
+      return;
+    }
+    setIsLoadingPage(true);
+    try {
+      const employeesQuery = query(collection(db, 'employees'), orderBy('name'));
+      const querySnapshot = await getDocs(employeesQuery);
+      const employeesData = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Employee));
+      setEmployees(employeesData);
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      toast({ title: "Erro ao buscar funcionários", variant: "destructive" });
+    } finally {
+      setIsLoadingPage(false);
+    }
+  }, [isAdmin, toast]);
+
   useEffect(() => {
-    if (!isLoading && !isAdmin) { // Check isLoading to prevent redirect during initial load
+    if (!isLoadingPage && !isAdmin && user) { 
       toast({ title: "Acesso Negado", description: "Você não tem permissão para acessar esta página.", variant: "destructive" });
       router.replace('/dashboard');
     }
-  }, [user, isAdmin, router, toast, isLoading]);
+  }, [user, isAdmin, router, toast, isLoadingPage]);
 
 
   useEffect(() => {
-    if (isAdmin) {
-      const fetchEmployees = async () => {
-        setIsLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
-        // In a real app, fetch from Firestore
-        setEmployees(mockEmployees);
-        setIsLoading(false);
-      };
-      fetchEmployees();
-    } else {
-      setIsLoading(false); // Not an admin, no data to load from here
-    }
-  }, [isAdmin]);
+    fetchEmployees();
+  }, [fetchEmployees]);
 
-  const handleFormSubmit = async (employeeData: Employee, password?: string) => {
-    // Placeholder for actual save/update logic (including Firebase Auth for new users)
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if (editingEmployee) {
-      // Prevent self-demotion if last admin
-      if (editingEmployee.id === user?.uid && editingEmployee.role === 'admin' && employeeData.role === 'employee') {
-        const adminCount = employees.filter(e => e.role === 'admin').length;
-        if (adminCount <= 1) {
-          toast({ title: "Ação não permitida", description: "Você não pode remover seu próprio status de administrador se for o único.", variant: "destructive" });
-          setIsLoading(false);
-          return;
+  const handleFormSubmit = async (formData: AddEmployeeFormData | EditEmployeeFormData) => {
+    setIsSubmitting(true);
+    try {
+      if (editingEmployee) { // Edit existing employee
+        const { name, role } = formData as EditEmployeeFormData;
+        if (editingEmployee.id === user?.uid && editingEmployee.role === 'admin' && role === 'employee') {
+          const adminCount = employees.filter(e => e.role === 'admin').length;
+          if (adminCount <= 1) {
+            toast({ title: "Ação não permitida", description: "Você não pode remover seu próprio status de administrador se for o único.", variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+          }
         }
+        const employeeRef = doc(db, 'employees', editingEmployee.id);
+        await updateDoc(employeeRef, { name, role });
+        toast({ title: 'Funcionário atualizado com sucesso!' });
+      } else { // Add new employee
+        const { name, email, password, role } = formData as AddEmployeeFormData;
+        // 1. Create Firebase Auth user
+        const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+        const newAuthUser = userCredential.user;
+        
+        // 2. Add employee details to Firestore, using UID as document ID
+        const employeeRef = doc(db, 'employees', newAuthUser.uid);
+        await setDoc(employeeRef, {
+          name,
+          email,
+          role,
+          // id is the doc id (newAuthUser.uid)
+        });
+        toast({ title: 'Funcionário adicionado com sucesso!' });
       }
-      setEmployees(employees.map(e => e.id === editingEmployee.id ? { ...e, ...employeeData, id: editingEmployee.id } : e));
-      toast({ title: 'Funcionário atualizado com sucesso!' });
-    } else {
-      // TODO: Firebase Auth user creation here
-      const newEmployee = { ...employeeData, id: String(Date.now()) }; // Mock ID
-      setEmployees([newEmployee, ...employees]);
-      toast({ title: 'Funcionário adicionado com sucesso! Lembre-se de fornecer a senha inicial.' });
+      fetchEmployees();
+      setIsFormOpen(false);
+      setEditingEmployee(null);
+    } catch (error: any) {
+      console.error("Error submitting employee form:", error);
+      // Customize error messages for auth errors
+      if (error.code?.startsWith('auth/')) {
+        toast({ title: "Erro de Autenticação", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Erro ao salvar funcionário", variant: "destructive" });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsLoading(false);
-    setIsFormOpen(false);
-    setEditingEmployee(null);
   };
 
   const handleEditEmployee = (employee: Employee) => {
@@ -88,7 +116,6 @@ export default function FuncionariosPage() {
   };
 
   const handleDeleteEmployee = async (employeeId: string, employeeRole: 'admin' | 'employee') => {
-    // Placeholder for actual delete logic (Firestore and inform about Auth deletion)
     if (employeeId === user?.uid) {
       toast({ title: "Ação não permitida", description: "Você não pode excluir sua própria conta.", variant: "destructive" });
       return;
@@ -101,12 +128,21 @@ export default function FuncionariosPage() {
         }
     }
 
-    if (confirm('Tem certeza que deseja excluir este funcionário? Lembre-se de remover manualmente a conta do Firebase Authentication.')) {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setEmployees(employees.filter(e => e.id !== employeeId));
-      toast({ title: 'Funcionário excluído do sistema!', description: 'Remova a conta do Firebase Authentication manualmente.' });
-      setIsLoading(false);
+    if (confirm('Tem certeza que deseja excluir este funcionário? A conta de autenticação associada NÃO será excluída automaticamente e precisará ser removida manualmente do Firebase Console.')) {
+      setIsSubmitting(true);
+      try {
+        await deleteDoc(doc(db, 'employees', employeeId));
+        // Note: Firebase Auth user deletion requires admin privileges and is complex from client-side.
+        // Usually handled by a backend function or manually in Firebase console.
+        // For this example, we only delete from Firestore and inform the user.
+        toast({ title: 'Funcionário excluído do Firestore!', description: 'Lembre-se de remover a conta do Firebase Authentication manualmente.' });
+        fetchEmployees();
+      } catch (error) {
+        console.error("Error deleting employee from Firestore:", error);
+        toast({ title: "Erro ao excluir funcionário do Firestore", variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
   
@@ -115,7 +151,7 @@ export default function FuncionariosPage() {
     emp.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!isAdmin && !isLoading) {
+  if (!isAdmin && !isLoadingPage && user) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
         <ShieldAlert className="h-24 w-24 text-destructive mb-6" />
@@ -126,7 +162,7 @@ export default function FuncionariosPage() {
     );
   }
   
-  if (isLoading && isAdmin) {
+  if (isLoadingPage && isAdmin) {
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -142,7 +178,7 @@ export default function FuncionariosPage() {
         <h1 className="text-3xl font-headline font-semibold text-foreground">Gerenciar Funcionários</h1>
         <Dialog open={isFormOpen} onOpenChange={(open) => { setIsFormOpen(open); if (!open) setEditingEmployee(null); }}>
           <DialogTrigger asChild>
-            <Button>
+            <Button disabled={!isAdmin}>
               <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Funcionário
             </Button>
           </DialogTrigger>
@@ -157,6 +193,7 @@ export default function FuncionariosPage() {
               currentUserIsAdmin={isAdmin}
               currentUserId={user?.uid}
               isLastAdmin={employees.filter(e => e.role === 'admin').length <= 1 && editingEmployee?.role === 'admin'}
+              isSubmitting={isSubmitting}
             />
           </DialogContent>
         </Dialog>
@@ -167,9 +204,10 @@ export default function FuncionariosPage() {
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         className="max-w-md"
+        disabled={!isAdmin}
       />
 
-      {filteredEmployees.length === 0 && !isLoading ? (
+      {!isLoadingPage && isAdmin && filteredEmployees.length === 0 ? (
         <div className="text-center py-10 bg-card rounded-lg shadow">
           <UserCog className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold text-foreground">Nenhum funcionário encontrado</h3>
@@ -183,7 +221,7 @@ export default function FuncionariosPage() {
             .
           </p>
         </div>
-      ) : (
+      ) : isAdmin ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEmployees.map((employee) => (
             <EmployeeCard
@@ -196,7 +234,7 @@ export default function FuncionariosPage() {
             />
           ))}
         </div>
-      )}
+      ) : null }
     </div>
   );
 }

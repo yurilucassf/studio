@@ -13,7 +13,7 @@ import { useState } from 'react';
 
 interface BookCardProps {
   book: Book;
-  clients: Client[]; // For the loan dialog
+  clients: Client[]; 
   onEdit: (book: Book) => void;
   onDelete: (bookId: string) => void;
   onLoanOrReturn: (book: Book, action: 'loan' | 'return', clientId?: string) => void;
@@ -33,16 +33,17 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
     setIsReturnDialogOpen(false);
   };
 
+  const coverImage = book.coverImageUrl || `https://placehold.co/300x450.png?text=${encodeURIComponent(book.title)}`;
+
   return (
     <Card className="flex flex-col h-full shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
       <CardHeader className="p-4 relative">
-        <div className="aspect-[2/3] w-full relative mb-3 rounded-md overflow-hidden">
+        <div className="aspect-[2/3] w-full relative mb-3 rounded-md overflow-hidden bg-muted">
           <Image
-            src={book.coverImageUrl || `https://placehold.co/300x450.png?text=${encodeURIComponent(book.title)}`}
+            src={coverImage}
             alt={`Capa do livro ${book.title}`}
             layout="fill"
             objectFit="cover"
-            data-ai-hint={book.dataAiHint || "book cover"}
           />
         </div>
         <CardTitle className="text-lg font-semibold leading-tight text-foreground truncate" title={book.title}>{book.title}</CardTitle>

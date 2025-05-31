@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea'; // Assuming this exists or use Input
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { BookSchema, type BookFormData } from '@/lib/schemas';
@@ -15,7 +14,7 @@ import { BOOK_GENRES } from '@/lib/constants';
 import { Loader2, Save } from 'lucide-react';
 
 interface BookFormProps {
-  onSubmit: (data: Book) => Promise<void>;
+  onSubmit: (data: BookFormData) => Promise<void>; // Changed from Book to BookFormData
   initialData?: Book | null;
   onCancel: () => void;
 }
@@ -44,15 +43,7 @@ export function BookForm({ onSubmit, initialData, onCancel }: BookFormProps) {
 
   const handleFormSubmit = async (data: BookFormData) => {
     setIsLoading(true);
-    // Construct the book object, maintaining ID and other fields if editing
-    const bookPayload: Book = {
-      ...(initialData || {}), // Spread initial data to keep ID, status, etc.
-      ...data, // Spread form data
-      id: initialData?.id || '', // Will be set by backend if new
-      status: initialData?.status || 'Disponível', // Default status if new
-      addedDate: initialData?.addedDate || Date.now(),
-    };
-    await onSubmit(bookPayload);
+    await onSubmit(data); // Pass BookFormData directly
     setIsLoading(false);
   };
 
@@ -132,7 +123,7 @@ export function BookForm({ onSubmit, initialData, onCancel }: BookFormProps) {
               <FormItem>
                 <FormLabel>Ano de Publicação</FormLabel>
                 <FormControl>
-                  <Input type="number" placeholder="Ex: 2023" {...field} disabled={isLoading} />
+                  <Input type="number" placeholder="Ex: 2023" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)} disabled={isLoading} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

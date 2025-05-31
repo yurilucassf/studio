@@ -1,26 +1,21 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, BookOpenCheck, Loader2 } from 'lucide-react';
-import type { Book } from '@/lib/types';
+import type { Book, Client } from '@/lib/types';
 import { BookCard } from '@/components/catalog/book-card';
 import { BookForm } from '@/components/catalog/book-form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { BookFilters, type BookFiltersState } from '@/components/catalog/book-filters';
 import { useToast } from '@/hooks/use-toast';
-
-// Mock data for demonstration
-const mockBooks: Book[] = [
-  { id: '1', title: 'A Revolução dos Bichos', author: 'George Orwell', isbn: '978-8535909551', genre: 'Ficção Distópica', publicationYear: 1945, status: 'Disponível', addedDate: new Date().getTime(), coverImageUrl: 'https://placehold.co/300x450.png' , dataAiHint: 'animal farm' },
-  { id: '2', title: 'O Senhor dos Anéis: A Sociedade do Anel', author: 'J.R.R. Tolkien', isbn: '978-8533613379', genre: 'Fantasia', publicationYear: 1954, status: 'Emprestado', borrowedByClientId: 'client001', borrowedDate: new Date().getTime(), addedDate: new Date().getTime(), coverImageUrl: 'https://placehold.co/300x450.png', dataAiHint: 'fantasy landscape' },
-  { id: '3', title: 'Orgulho e Preconceito', author: 'Jane Austen', isbn: '978-8525419148', genre: 'Romance', publicationYear: 1813, status: 'Disponível', addedDate: new Date().getTime(), coverImageUrl: 'https://placehold.co/300x450.png', dataAiHint: 'vintage portrait' },
-  { id: '4', title: 'Fahrenheit 451', author: 'Ray Bradbury', isbn: '978-8525055000', genre: 'Ficção Científica', publicationYear: 1953, status: 'Disponível', addedDate: new Date().getTime(), coverImageUrl: 'https://placehold.co/300x450.png', dataAiHint: 'burning book' },
-];
-
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy, Timestamp, getDoc, where, writeBatch } from 'firebase/firestore';
+import type { BookFormData } from '@/lib/schemas';
 
 export default function CatalogPage() {
   const [books, setBooks] = useState<Book[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -32,33 +27,79 @@ export default function CatalogPage() {
     status: '',
   });
 
-  useEffect(() => {
-    // Simulate fetching books
-    const fetchBooks = async () => {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
-      // In a real app, fetch from Firestore based on filters
-      setBooks(mockBooks);
-      setIsLoading(false);
-    };
-    fetchBooks();
-  }, []);
-
-  const handleFormSubmit = async (bookData: Book) => {
-    // Placeholder for actual save/update logic
+  const fetchBooksAndClients = useCallback(async () => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if (editingBook) {
-      setBooks(books.map(b => b.id === editingBook.id ? { ...b, ...bookData, id: editingBook.id } : b));
-      toast({ title: 'Livro atualizado com sucesso!' });
-    } else {
-      const newBook = { ...bookData, id: String(Date.now()), addedDate: Date.now() };
-      setBooks([newBook, ...books]);
-      toast({ title: 'Livro adicionado com sucesso!' });
+    try {
+      const booksQuery = query(collection(db, 'books'), orderBy('addedDate', 'desc'));
+      const booksSnapshot = await getDocs(booksQuery);
+      const booksData = booksSnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          addedDate: (data.addedDate as Timestamp)?.toMillis() || Date.now(),
+          borrowedDate: (data.borrowedDate as Timestamp)?.toMillis() || null,
+        } as Book;
+      });
+      setBooks(booksData);
+
+      const clientsSnapshot = await getDocs(collection(db, 'clients'));
+      const clientsData = clientsSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Client));
+      setClients(clientsData);
+
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      toast({ title: "Erro ao buscar dados", description: "Não foi possível carregar livros e clientes.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-    setIsFormOpen(false);
-    setEditingBook(null);
+  }, [toast]);
+
+  useEffect(() => {
+    fetchBooksAndClients();
+  }, [fetchBooksAndClients]);
+
+  const handleFormSubmit = async (formData: BookFormData) => {
+    setIsLoading(true);
+    try {
+      const bookPayload = {
+        ...formData,
+        publicationYear: Number(formData.publicationYear),
+        coverImageUrl: formData.coverImageUrl || `https://placehold.co/300x450.png?text=${encodeURIComponent(formData.title)}`,
+      };
+
+      if (editingBook) {
+        const bookRef = doc(db, 'books', editingBook.id);
+        await updateDoc(bookRef, {
+            ...bookPayload,
+            // Retain existing status and loan details unless explicitly changed elsewhere
+            status: editingBook.status,
+            borrowedByClientId: editingBook.borrowedByClientId,
+            borrowedByName: editingBook.borrowedByName,
+            borrowedDate: editingBook.borrowedDate ? Timestamp.fromMillis(editingBook.borrowedDate) : null,
+            addedDate: Timestamp.fromMillis(editingBook.addedDate),
+        });
+        toast({ title: 'Livro atualizado com sucesso!' });
+      } else {
+        await addDoc(collection(db, 'books'), {
+          ...bookPayload,
+          status: 'Disponível' as Book['status'],
+          addedDate: Timestamp.now(),
+          borrowedByClientId: null,
+          borrowedByName: null,
+          borrowedDate: null,
+        });
+        toast({ title: 'Livro adicionado com sucesso!' });
+      }
+      fetchBooksAndClients(); // Refresh list
+      setIsFormOpen(false);
+      setEditingBook(null);
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      toast({ title: "Erro ao salvar livro", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEditBook = (book: Book) => {
@@ -67,29 +108,81 @@ export default function CatalogPage() {
   };
 
   const handleDeleteBook = async (bookId: string) => {
-    // Placeholder for actual delete logic
     if (confirm('Tem certeza que deseja excluir este livro?')) {
       setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setBooks(books.filter(b => b.id !== bookId));
-      toast({ title: 'Livro excluído com sucesso!' });
-      setIsLoading(false);
+      try {
+        // Also delete related loan activities
+        const batch = writeBatch(db);
+        const loanActivitiesQuery = query(collection(db, "loanActivities"), where("bookId", "==", bookId));
+        const loanActivitiesSnapshot = await getDocs(loanActivitiesQuery);
+        loanActivitiesSnapshot.forEach(docSnap => {
+            batch.delete(docSnap.ref);
+        });
+        
+        const bookRef = doc(db, 'books', bookId);
+        batch.delete(bookRef);
+        
+        await batch.commit();
+
+        toast({ title: 'Livro e histórico de empréstimos excluídos com sucesso!' });
+        fetchBooksAndClients(); // Refresh list
+      } catch (error) {
+        console.error("Error deleting book:", error);
+        toast({ title: "Erro ao excluir livro", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleLoanOrReturn = async (book: Book, action: 'loan' | 'return', clientId?: string) => {
-    // Placeholder
+  const handleLoanOrReturn = async (book: Book, action: 'loan' | 'return', selectedClientId?: string) => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const updatedBook = {
-      ...book,
-      status: action === 'loan' ? 'Emprestado' : ('Disponível' as Book['status']),
-      borrowedByClientId: action === 'loan' ? clientId : null,
-      borrowedDate: action === 'loan' ? Date.now() : null,
-    };
-    setBooks(books.map(b => b.id === book.id ? updatedBook : b));
-    toast({ title: `Livro ${action === 'loan' ? 'emprestado' : 'devolvido'} com sucesso!` });
-    setIsLoading(false);
+    try {
+      const bookRef = doc(db, 'books', book.id);
+      let clientName = book.borrowedByName || ''; // For returns, use existing name
+      let finalClientId = book.borrowedByClientId || '';
+
+      if (action === 'loan') {
+        if (!selectedClientId) {
+          toast({ title: "Erro", description: "Cliente não selecionado.", variant: "destructive" });
+          setIsLoading(false);
+          return;
+        }
+        finalClientId = selectedClientId;
+        const clientDocSnap = await getDoc(doc(db, 'clients', finalClientId));
+        if (clientDocSnap.exists()) {
+          clientName = clientDocSnap.data().name;
+        } else {
+          throw new Error("Client not found");
+        }
+      }
+
+      const updatedBookData = {
+        status: action === 'loan' ? 'Emprestado' : ('Disponível' as Book['status']),
+        borrowedByClientId: action === 'loan' ? finalClientId : null,
+        borrowedByName: action === 'loan' ? clientName : null,
+        borrowedDate: action === 'loan' ? Timestamp.now() : null,
+      };
+      await updateDoc(bookRef, updatedBookData);
+
+      // Add to loanActivities
+      await addDoc(collection(db, 'loanActivities'), {
+        bookId: book.id,
+        bookTitle: book.title,
+        clientId: finalClientId, // Use finalClientId which is set for both loan and return logic path. For return, it's the ID of who borrowed it.
+        clientName: clientName, // Use determined clientName. For return, it's who borrowed it.
+        loanDate: Timestamp.now(),
+        type: action,
+      });
+
+      toast({ title: `Livro ${action === 'loan' ? 'emprestado' : 'devolvido'} com sucesso!` });
+      fetchBooksAndClients(); // Refresh list
+    } catch (error) {
+      console.error("Error processing loan/return:", error);
+      toast({ title: "Erro ao processar empréstimo/devolução", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const filteredBooks = useMemo(() => {
@@ -161,8 +254,7 @@ export default function CatalogPage() {
               onEdit={handleEditBook}
               onDelete={handleDeleteBook}
               onLoanOrReturn={handleLoanOrReturn}
-              // Mock clients for ClientSelectForLoan
-              clients={[{id: 'client001', name: 'João Silva', email: 'joao@example.com'}, {id: 'client002', name: 'Maria Souza', email: 'maria@example.com'}]}
+              clients={clients}
             />
           ))}
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, UserRound, Loader2 } from 'lucide-react';
 import type { Client } from '@/lib/types';
@@ -9,14 +9,9 @@ import { ClientForm } from '@/components/clientes/client-form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-
-// Mock data
-const mockClients: Client[] = [
-  { id: '1', name: 'Ana Beatriz Costa', email: 'ana.costa@example.com', phone: '11987654321' },
-  { id: '2', name: 'Carlos Eduardo Lima', email: 'carlos.lima@example.com', phone: '21912345678' },
-  { id: '3', name: 'Daniela Fernandes Alves', email: 'daniela.alves@example.com' },
-  { id: '4', name: 'Eduardo Moreira Silva', email: 'eduardo.silva@example.com', phone: '31999998888' },
-];
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import type { ClientFormData } from '@/lib/schemas';
 
 export default function ClientesPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -26,31 +21,45 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchClients = async () => {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate delay
-      setClients(mockClients);
-      setIsLoading(false);
-    };
-    fetchClients();
-  }, []);
-
-  const handleFormSubmit = async (clientData: Client) => {
-    // Placeholder for actual save/update logic
+  const fetchClients = useCallback(async () => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if (editingClient) {
-      setClients(clients.map(c => c.id === editingClient.id ? { ...c, ...clientData, id: editingClient.id } : c));
-      toast({ title: 'Cliente atualizado com sucesso!' });
-    } else {
-      const newClient = { ...clientData, id: String(Date.now()) }; // Mock ID generation
-      setClients([newClient, ...clients]);
-      toast({ title: 'Cliente adicionado com sucesso!' });
+    try {
+      const clientsQuery = query(collection(db, 'clients'), orderBy('name'));
+      const querySnapshot = await getDocs(clientsQuery);
+      const clientsData = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Client));
+      setClients(clientsData);
+    } catch (error) {
+      console.error("Error fetching clients:", error);
+      toast({ title: "Erro ao buscar clientes", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-    setIsFormOpen(false);
-    setEditingClient(null);
+  }, [toast]);
+
+  useEffect(() => {
+    fetchClients();
+  }, [fetchClients]);
+
+  const handleFormSubmit = async (formData: ClientFormData) => {
+    setIsLoading(true);
+    try {
+      if (editingClient) {
+        const clientRef = doc(db, 'clients', editingClient.id);
+        await updateDoc(clientRef, formData);
+        toast({ title: 'Cliente atualizado com sucesso!' });
+      } else {
+        await addDoc(collection(db, 'clients'), formData);
+        toast({ title: 'Cliente adicionado com sucesso!' });
+      }
+      fetchClients();
+      setIsFormOpen(false);
+      setEditingClient(null);
+    } catch (error) {
+      console.error("Error submitting client form:", error);
+      toast({ title: "Erro ao salvar cliente", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEditClient = (client: Client) => {
@@ -59,13 +68,18 @@ export default function ClientesPage() {
   };
 
   const handleDeleteClient = async (clientId: string) => {
-    // Placeholder for actual delete logic
-     if (confirm('Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.')) {
+    if (confirm('Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.')) {
       setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setClients(clients.filter(c => c.id !== clientId));
-      toast({ title: 'Cliente excluído com sucesso!' });
-      setIsLoading(false);
+      try {
+        await deleteDoc(doc(db, 'clients', clientId));
+        toast({ title: 'Cliente excluído com sucesso!' });
+        fetchClients();
+      } catch (error) {
+        console.error("Error deleting client:", error);
+        toast({ title: "Erro ao excluir cliente", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
   

@@ -21,10 +21,9 @@ import {
   LayoutDashboard,
   BookOpen,
   Users,
-  UserCog, // Using UserCog for Funcionários for better distinction
+  UserCog, 
   LogOut,
   BookHeart,
-  Lightbulb,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@/lib/types';
@@ -42,7 +41,6 @@ const navItems: NavItem[] = [
   { href: '/catalog', label: 'Catálogo de Livros', icon: BookOpen },
   { href: '/clientes', label: 'Clientes', icon: Users },
   { href: '/funcionarios', label: 'Funcionários', icon: UserCog, adminOnly: true },
-  { href: '/recomendacoes', label: 'Recomendações IA', icon: Lightbulb },
 ];
 
 export function AppSidebar() {
