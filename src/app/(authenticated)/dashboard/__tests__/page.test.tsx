@@ -3,8 +3,9 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import DashboardPage from '../page';
-import type { Book, LoanActivity, User } from '@/lib/types';
+import type { Book, LoanActivity, User, DashboardStats } from '@/lib/types';
 import { useAuthStore } from '@/hooks/use-auth-store';
+import type { UserMetadata, UserInfo } from 'firebase/auth';
 
 // Mock 'firebase/firestore'
 jest.mock('firebase/firestore', () => ({
@@ -47,9 +48,48 @@ jest.mock('@/components/dashboard/stat-card', () => ({
   )),
 }));
 
+
+const mockUserMetadata: UserMetadata = {
+  creationTime: new Date().toISOString(),
+  lastSignInTime: new Date().toISOString(),
+};
+const mockProviderData: UserInfo[] = [];
+
+const baseMockUserProperties = {
+  emailVerified: true,
+  isAnonymous: false,
+  photoURL: null,
+  tenantId: null,
+  metadata: mockUserMetadata,
+  providerData: mockProviderData,
+  delete: jest.fn(() => Promise.resolve()),
+  getIdToken: jest.fn(() => Promise.resolve('mock-id-token')),
+  getIdTokenResult: jest.fn(() => Promise.resolve({ token: 'mock-id-token' } as any)),
+  reload: jest.fn(() => Promise.resolve()),
+  toJSON: jest.fn(() => ({})),
+};
+
+const mockAdminUser: User = {
+  ...baseMockUserProperties,
+  uid: 'admin1',
+  email: 'admin@example.com',
+  name: 'Usuário Admin',
+  displayName: 'Usuário Admin',
+  role: 'admin',
+};
+const mockEmployeeUser: User = {
+  ...baseMockUserProperties,
+  uid: 'emp1',
+  email: 'emp@example.com',
+  name: 'Usuário Funcionário',
+  displayName: 'Usuário Funcionário',
+  role: 'employee',
+};
+
+
 const mockBooksData: Partial<Book>[] = [
-  { id: 'b1', title: 'Livro Recente 1', author: 'Autor R1', status: 'Disponível', addedDate: Date.now() - 1000 },
-  { id: 'b2', title: 'Livro Recente 2', author: 'Autor R2', status: 'Emprestado', addedDate: Date.now() - 2000 },
+  { id: 'b1', title: 'Livro Recente Um', author: 'Autor R1', status: 'Disponível', addedDate: Date.now() - 1000 },
+  { id: 'b2', title: 'Livro Recente Dois', author: 'Autor R2', status: 'Emprestado', addedDate: Date.now() - 2000 },
 ];
 
 const mockLoanActivitiesData: Partial<LoanActivity>[] = [
@@ -57,29 +97,32 @@ const mockLoanActivitiesData: Partial<LoanActivity>[] = [
   { id: 'l2', bookTitle: 'Livro Devolvido Y', clientName: 'Cliente B', type: 'return', loanDate: Date.now() - 1500 },
 ];
 
-describe('DashboardPage', () => {
+describe('PaginaDoPainel', () => {
   beforeEach(() => {
     (getDocs as jest.Mock).mockReset();
-    (collection as jest.Mock).mockImplementation((_db, path) => ({ path })); // Simples mock para collection
-    (query as jest.Mock).mockImplementation((collectionRef, ..._constraints) => collectionRef); // Retorna a ref da coleção
+    // Simples mock para collection e query, não precisam de reset complexo aqui pois são pass-through
+    (collection as jest.Mock).mockImplementation((_db, path) => ({ path, type: 'collectionRef' })); 
+    (query as jest.Mock).mockImplementation((collectionRef, ..._constraints) => collectionRef); 
     (where as jest.Mock).mockReturnValue({ type: 'whereConstraint' });
     (orderBy as jest.Mock).mockReturnValue({ type: 'orderByConstraint' });
     (limit as jest.Mock).mockReturnValue({ type: 'limitConstraint' });
     mockToast.mockClear();
-    mockUseAuthStore.mockReturnValue({ user: { uid: 'admin1', role: 'admin' } as User, isLoading: false, setUser: jest.fn(), setLoading: jest.fn()});
+    mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn()});
   });
 
   it('renderiza estado de carregamento inicialmente para estatísticas e tabelas', async () => {
-    (getDocs as jest.Mock).mockImplementation(() => new Promise(() => {})); // Mantém pendente
+    // Mantém a promessa pendente para simular carregamento
+    (getDocs as jest.Mock).mockImplementation(() => new Promise(() => {})); 
 
     render(<DashboardPage />);
 
     expect(screen.getByTestId('stat-card-total-de-livros').textContent).toContain('Carregando...');
     expect(screen.getByTestId('stat-card-livros-emprestados').textContent).toContain('Carregando...');
     
+    // Verifica se as células da tabela contêm skeletons (indicadores de carregamento)
     const tableCells = screen.getAllByRole('cell');
     tableCells.forEach(cell => {
-        if(cell.querySelector('.animate-pulse')) {
+        if(cell.querySelector('.animate-pulse')) { // .animate-pulse é usado pelo Skeleton
             expect(cell.querySelector('.animate-pulse')).toBeInTheDocument();
         }
     });
@@ -87,12 +130,12 @@ describe('DashboardPage', () => {
 
   it('exibe estatísticas, livros recentes e empréstimos recentes corretamente após o carregamento', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ size: 10 }) // totalLivros
-      .mockResolvedValueOnce({ size: 3 })  // livrosEmprestados
-      .mockResolvedValueOnce({ size: 2 })  // totalClientes
-      .mockResolvedValueOnce({ size: 1 })  // totalFuncionarios
-      .mockResolvedValueOnce({ docs: mockBooksData.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }}) })) }) // Livros Recentes
-      .mockResolvedValueOnce({ docs: mockLoanActivitiesData.map(l => ({ id: l.id, data: () => ({...l, loanDate: { toMillis: () => l.loanDate }}) })) }); // Empréstimos Recentes
+      .mockResolvedValueOnce({ size: 10 }) // totalLivros (books collection)
+      .mockResolvedValueOnce({ size: 3 })  // livrosEmprestados (books collection with where status == 'Emprestado')
+      .mockResolvedValueOnce({ size: 2 })  // totalClientes (clients collection)
+      .mockResolvedValueOnce({ size: 1 })  // totalFuncionarios (employees collection)
+      .mockResolvedValueOnce({ docs: mockBooksData.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }}) })) }) // Livros Recentes (books collection with orderBy and limit)
+      .mockResolvedValueOnce({ docs: mockLoanActivitiesData.map(l => ({ id: l.id, data: () => ({...l, loanDate: { toMillis: () => l.loanDate }}) })) }); // Empréstimos Recentes (loanActivities collection with orderBy and limit)
 
     render(<DashboardPage />);
 
@@ -104,9 +147,9 @@ describe('DashboardPage', () => {
       expect(screen.getByTestId('stat-card-total-de-funcionários').textContent).toContain('1');
     });
 
-    await screen.findByText('Livro Recente 1');
+    await screen.findByText('Livro Recente Um');
     expect(screen.getByText('Autor R1')).toBeInTheDocument();
-    expect(screen.getByText('Livro Recente 2')).toBeInTheDocument();
+    expect(screen.getByText('Livro Recente Dois')).toBeInTheDocument();
     expect(screen.getByText('Autor R2')).toBeInTheDocument();
 
     await screen.findByText('Livro Emprestado X');
@@ -150,7 +193,7 @@ describe('DashboardPage', () => {
   });
   
   it('mostra card de Total de Funcionários para não-admin se existirem funcionários', async () => {
-    mockUseAuthStore.mockReturnValue({ user: { uid: 'emp1', role: 'employee' } as User, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    mockUseAuthStore.mockReturnValue({ user: mockEmployeeUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock)
       .mockResolvedValueOnce({ size: 10 }) 
       .mockResolvedValueOnce({ size: 3 })  
@@ -167,7 +210,7 @@ describe('DashboardPage', () => {
   });
 
   it('esconde card de Total de Funcionários para não-admin se não existirem funcionários', async () => {
-    mockUseAuthStore.mockReturnValue({ user: { uid: 'emp1', role: 'employee' } as User, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    mockUseAuthStore.mockReturnValue({ user: mockEmployeeUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock)
       .mockResolvedValueOnce({ size: 10 }) 
       .mockResolvedValueOnce({ size: 3 })  

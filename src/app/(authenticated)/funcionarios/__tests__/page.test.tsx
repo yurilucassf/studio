@@ -6,6 +6,7 @@ import FuncionariosPage from '../page';
 import type { Employee, User } from '@/lib/types';
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { useRouter } from 'next/navigation';
+import type { UserMetadata, UserInfo } from 'firebase/auth';
 
 // Mock 'firebase/firestore'
 jest.mock('firebase/firestore', () => ({
@@ -13,7 +14,6 @@ jest.mock('firebase/firestore', () => ({
   doc: jest.fn(),
   setDoc: jest.fn(),
   getDocs: jest.fn(),
-  // addDoc: jest.fn(), // setDoc é usado para adicionar com UID
   updateDoc: jest.fn(),
   deleteDoc: jest.fn(),
   query: jest.fn((queryObj, ..._constraints) => queryObj),
@@ -24,7 +24,7 @@ jest.mock('firebase/firestore', () => ({
 jest.mock('firebase/auth', () => ({
   createUserWithEmailAndPassword: jest.fn(),
   deleteUser: jest.fn(),
-  getAuth: jest.fn(() => ({ currentUser: { uid: 'admin1' }})), // Mock básico para getAuth
+  getAuth: jest.fn(() => ({ currentUser: { uid: 'admin1' } })), // Mock básico para getAuth
 }));
 
 // Importar as funções mockadas para configuração
@@ -40,8 +40,8 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 // Mock '@/lib/firebase'
 jest.mock('@/lib/firebase', () => ({
-  db: { app: {} }, 
-  auth: { name: 'mockedFirebaseAuth' }, 
+  db: { app: {} },
+  auth: { name: 'mockedFirebaseAuth' },
 }));
 
 // Mock hooks
@@ -69,11 +69,11 @@ jest.mock('@/components/funcionarios/employee-card', () => ({
 
 jest.mock('@/components/funcionarios/employee-form', () => ({
   EmployeeForm: jest.fn(({ onSubmit, onCancel, initialData, isSubmitting }) => (
-    <form data-testid="employee-form" onSubmit={(e) => { 
-        e.preventDefault(); 
-        if (initialData) { 
+    <form data-testid="employee-form" onSubmit={(e) => {
+        e.preventDefault();
+        if (initialData) {
             onSubmit({ name: 'Nome Atualizado Mock', role: 'employee' });
-        } else { 
+        } else {
             onSubmit({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', password: 'password123', role: 'employee' });
         }
     }}>
@@ -83,15 +83,52 @@ jest.mock('@/components/funcionarios/employee-form', () => ({
   )),
 }));
 
-const mockAdminUser: User = { uid: 'admin1', email: 'admin@example.com', name: 'Usuário Admin', role: 'admin' };
-const mockEmployeeUser: User = { uid: 'emp1', email: 'emp@example.com', name: 'Usuário Funcionário', role: 'employee' };
+const mockUserMetadata: UserMetadata = {
+  creationTime: new Date().toISOString(),
+  lastSignInTime: new Date().toISOString(),
+};
+
+const mockProviderData: UserInfo[] = []; // Empty array is fine if not specifically used
+
+const baseMockUserProperties = {
+  emailVerified: true,
+  isAnonymous: false,
+  photoURL: null,
+  tenantId: null,
+  metadata: mockUserMetadata,
+  providerData: mockProviderData,
+  delete: jest.fn(() => Promise.resolve()),
+  getIdToken: jest.fn(() => Promise.resolve('mock-id-token')),
+  getIdTokenResult: jest.fn(() => Promise.resolve({ token: 'mock-id-token' } as any)),
+  reload: jest.fn(() => Promise.resolve()),
+  toJSON: jest.fn(() => ({})),
+};
+
+const mockAdminUser: User = {
+  ...baseMockUserProperties,
+  uid: 'admin1',
+  email: 'admin@example.com',
+  name: 'Usuário Admin',
+  displayName: 'Usuário Admin', // Firebase's displayName
+  role: 'admin',
+  toJSON: jest.fn(() => ({ uid: 'admin1', email: 'admin@example.com', name: 'Usuário Admin', role: 'admin' })),
+};
+const mockEmployeeUser: User = {
+  ...baseMockUserProperties,
+  uid: 'emp1',
+  email: 'emp@example.com',
+  name: 'Usuário Funcionário',
+  displayName: 'Usuário Funcionário',
+  role: 'employee',
+  toJSON: jest.fn(() => ({ uid: 'emp1', email: 'emp@example.com', name: 'Usuário Funcionário', role: 'employee' })),
+};
 
 const mockEmployees: Employee[] = [
   { id: 'admin1', name: 'Usuário Admin', email: 'admin@example.com', role: 'admin' },
   { id: 'emp2', name: 'Joana Silva', email: 'joana@example.com', role: 'employee' },
 ];
 
-describe('FuncionariosPage', () => {
+describe('PaginaDeFuncionarios', () => {
   beforeEach(() => {
     (getDocs as jest.Mock).mockReset();
     (setDoc as jest.Mock).mockReset().mockResolvedValue(undefined);
@@ -109,7 +146,7 @@ describe('FuncionariosPage', () => {
 
   it('redireciona usuários não-admin e mostra toast', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockEmployeeUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // Mock para fetchEmployees não falhar
 
     render(<FuncionariosPage />);
 
@@ -125,7 +162,13 @@ describe('FuncionariosPage', () => {
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) });
 
     render(<FuncionariosPage />);
-    expect(screen.getByText(/Carregando funcionários.../i)).toBeInTheDocument();
+    // A página agora tem um loader geral se user não estiver carregado ou isLoadingPage for true.
+    // Se o user for admin, ele tentará buscar.
+    // O "Carregando funcionários..." só aparece se for admin E estiver carregando.
+    // Aqui, como isLoadingPage é true inicialmente, ele mostrará o loader geral.
+    // Vamos procurar pelo loader geral.
+    expect(screen.getByText(/Carregando\.\.\./i)).toBeInTheDocument();
+
 
     await waitFor(() => {
       expect(screen.getByText('Usuário Admin')).toBeInTheDocument();
@@ -162,8 +205,8 @@ describe('FuncionariosPage', () => {
   it('adiciona um novo funcionário com sucesso para admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock) 
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [{ id: 'novo-auth-uid', data: () => ({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', role: 'employee' }) }]}); 
+      .mockResolvedValueOnce({ docs: [] }) // Carga inicial
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-auth-uid', data: () => ({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', role: 'employee' }) }]}); // Após adicionar
 
     render(<FuncionariosPage />);
     await screen.findByText(/Nenhum funcionário encontrado/i);
@@ -189,8 +232,8 @@ describe('FuncionariosPage', () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     const editableEmployee = mockEmployees[1]; // Joana Silva
      (getDocs as jest.Mock)
-        .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) })
-        .mockResolvedValueOnce({ docs: mockEmployees.map(e => e.id === editableEmployee.id ? { id: e.id, data: () => ({...e, name: 'Nome Atualizado Mock' })} : {id: e.id, data: () => e}) });
+        .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) }) // Carga inicial
+        .mockResolvedValueOnce({ docs: mockEmployees.map(e => e.id === editableEmployee.id ? { id: e.id, data: () => ({...e, name: 'Nome Atualizado Mock' })} : {id: e.id, data: () => e}) }); // Após editar
       
     render(<FuncionariosPage />);
     await screen.findByText(editableEmployee.name);
@@ -212,10 +255,10 @@ describe('FuncionariosPage', () => {
 
   it('exclui um funcionário com sucesso para admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    const employeeToDelete = mockEmployees[1]; // Joana Silva
+    const employeeToDelete = mockEmployees[1]; // Joana Silva (não admin)
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) }) 
-      .mockResolvedValueOnce({ docs: [mockEmployees[0]].map(e => ({ id: e.id, data: () => e })) }); 
+      .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) }) // Carga inicial
+      .mockResolvedValueOnce({ docs: [mockEmployees[0]].map(e => ({ id: e.id, data: () => e })) }); // Após excluir
 
     render(<FuncionariosPage />);
     await screen.findByText(employeeToDelete.name);

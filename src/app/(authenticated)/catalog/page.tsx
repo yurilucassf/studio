@@ -7,7 +7,7 @@ import { PlusCircle, BookOpenCheck, Loader2 } from 'lucide-react';
 import type { Book, Client } from '@/lib/types';
 import { BookCard } from '@/components/catalog/book-card';
 import { BookForm } from '@/components/catalog/book-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'; // DialogTrigger removido daqui
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { BookFilters, type BookFiltersState } from '@/components/catalog/book-filters';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
@@ -73,11 +73,11 @@ export default function CatalogPage() {
         const bookRef = doc(db, 'books', editingBook.id);
         await updateDoc(bookRef, {
             ...bookPayload,
-            status: editingBook.status,
-            borrowedByClientId: editingBook.borrowedByClientId,
+            status: editingBook.status, // Mantém o status atual
+            borrowedByClientId: editingBook.borrowedByClientId, // Mantém dados de empréstimo
             borrowedByName: editingBook.borrowedByName,
             borrowedDate: editingBook.borrowedDate ? Timestamp.fromMillis(editingBook.borrowedDate) : null,
-            addedDate: Timestamp.fromMillis(editingBook.addedDate),
+            addedDate: Timestamp.fromMillis(editingBook.addedDate), // Mantém data de adição original
         });
         toast({ title: 'Livro atualizado com sucesso!' });
       } else {
@@ -112,12 +112,15 @@ export default function CatalogPage() {
       setIsLoading(true);
       try {
         const batch = writeBatch(db);
+        
+        // Excluir atividades de empréstimo associadas
         const loanActivitiesQuery = query(collection(db, "loanActivities"), where("bookId", "==", bookId));
         const loanActivitiesSnapshot = await getDocs(loanActivitiesQuery);
         loanActivitiesSnapshot.forEach(docSnap => {
             batch.delete(docSnap.ref);
         });
         
+        // Excluir o livro
         const bookRef = doc(db, 'books', bookId);
         batch.delete(bookRef);
         
@@ -169,7 +172,7 @@ export default function CatalogPage() {
         bookTitle: book.title,
         clientId: finalClientId, 
         clientName: clientName, 
-        loanDate: Timestamp.now(),
+        loanDate: Timestamp.now(), // Usar loanDate para ambos, mas o 'type' diferencia
         type: action,
       });
 

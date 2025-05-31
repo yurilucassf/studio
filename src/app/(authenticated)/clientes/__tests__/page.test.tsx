@@ -60,7 +60,10 @@ jest.mock('@/components/clientes/client-card', () => ({
 
 jest.mock('@/components/clientes/client-form', () => ({
   ClientForm: jest.fn(({ onSubmit, onCancel, initialData }) => (
-    <form data-testid="client-form" onSubmit={(e) => { e.preventDefault(); onSubmit(initialData || { name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com' }); }}>
+    <form data-testid="client-form" onSubmit={(e) => { 
+        e.preventDefault(); 
+        onSubmit(initialData || { name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }); 
+    }}>
       <button type="submit">Salvar Cliente (Form Mock)</button>
       <button type="button" onClick={onCancel}>Cancelar (Form Mock)</button>
     </form>
@@ -72,7 +75,7 @@ const mockClients: Client[] = [
   { id: '2', name: 'Roberto Souza', email: 'roberto@example.com', phone: '222-2222' },
 ];
 
-describe('ClientesPage', () => {
+describe('PaginaDeClientes', () => {
   beforeEach(() => {
     (getDocs as jest.Mock).mockReset();
     (addDoc as jest.Mock).mockReset().mockResolvedValue({ id: 'novo-cliente-id' });
@@ -123,7 +126,7 @@ describe('ClientesPage', () => {
   it('adiciona um novo cliente com sucesso', async () => {
     (getDocs as jest.Mock)
       .mockResolvedValueOnce({ docs: [] }) // Carga inicial
-      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com' }) }] }); // Após adicionar
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] }); // Após adicionar
 
     render(<ClientesPage />);
     await screen.findByText(/Nenhum cliente encontrado/i);
@@ -138,6 +141,7 @@ describe('ClientesPage', () => {
       expect(addDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'collectionRef', path: 'clients' }), {
         name: 'Novo Cliente de Teste',
         email: 'novo_cliente@example.com',
+        phone: '123456789',
       });
       expect(mockToast).toHaveBeenCalledWith({ title: 'Cliente adicionado com sucesso!' });
     });
@@ -148,7 +152,7 @@ describe('ClientesPage', () => {
     const editableClient = mockClients[0];
     (getDocs as jest.Mock)
       .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] }) // Carga Inicial
-      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => ({ ...editableClient, name: 'Novo Cliente de Teste' /* Vem do mock do form */}) }] }); // Após Editar
+      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => ({ ...editableClient, name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] }); // Após Editar
       
     render(<ClientesPage />);
     await screen.findByText(editableClient.name);
@@ -161,7 +165,7 @@ describe('ClientesPage', () => {
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
       expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'clients', id: editableClient.id }), 
-        expect.objectContaining({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com' }) // Do mock do ClientForm
+        expect.objectContaining({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' })
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Cliente atualizado com sucesso!' });
     });

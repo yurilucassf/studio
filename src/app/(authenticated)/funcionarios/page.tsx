@@ -7,7 +7,7 @@ import { PlusCircle, UserCog, ShieldAlert, Loader2 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { EmployeeCard } from '@/components/funcionarios/employee-card';
 import { EmployeeForm } from '@/components/funcionarios/employee-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'; // DialogTrigger removido
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { useRouter } from 'next/navigation';
@@ -19,7 +19,7 @@ import type { AddEmployeeFormData, EditEmployeeFormData } from '@/lib/schemas';
 
 
 export default function FuncionariosPage() {
-  const { user } = useAuthStore();
+  const { user, isLoading: isAuthLoading } = useAuthStore(); // Renomeado para evitar conflito
   const router = useRouter();
   const { toast } = useToast();
 
@@ -33,7 +33,7 @@ export default function FuncionariosPage() {
   const isAdmin = user?.role === 'admin';
 
    const fetchEmployees = useCallback(async () => {
-    if (!isAdmin && user) { // Adicionado 'user' para garantir que o estado do usuário já foi carregado
+    if (!isAdmin) { // Se não for admin, não precisa buscar, a renderização cuidará disso
       setIsLoadingPage(false);
       return;
     }
@@ -49,22 +49,20 @@ export default function FuncionariosPage() {
     } finally {
       setIsLoadingPage(false);
     }
-  }, [isAdmin, toast, user]); // Adicionado 'user' como dependência
+  }, [isAdmin, toast]);
 
   useEffect(() => {
-    // A verificação do admin e o redirecionamento são movidos para dentro do fetchEmployees/renderização
-    // para garantir que o estado do usuário (user) já foi carregado pelo AuthProvider.
-    fetchEmployees();
-  }, [fetchEmployees]);
-
-  useEffect(() => {
-    // Este useEffect agora é redundante se a lógica de redirecionamento está no render ou fetch.
-    // Mantido por enquanto, mas pode ser simplificado.
-    if (!isLoadingPage && !isAdmin && user) { 
-      toast({ title: "Acesso Negado", description: "Você não tem permissão para acessar esta página.", variant: "destructive" });
-      router.replace('/dashboard');
+    if (!isAuthLoading) { // Só busca ou redireciona depois que o estado de autenticação foi resolvido
+      if (isAdmin) {
+        fetchEmployees();
+      } else if(user) { // Se não for admin mas o usuário está carregado
+        setIsLoadingPage(false); // Para de carregar a página
+        toast({ title: "Acesso Negado", description: "Você não tem permissão para acessar esta página.", variant: "destructive" });
+        router.replace('/dashboard');
+      }
+      // Se !user e !isAuthLoading, o AuthProvider cuidará do redirecionamento para /login
     }
-  }, [user, isAdmin, router, toast, isLoadingPage]);
+  }, [user, isAdmin, isAuthLoading, fetchEmployees, router, toast]);
 
 
   const handleFormSubmit = async (formData: AddEmployeeFormData | EditEmployeeFormData) => {
@@ -96,7 +94,7 @@ export default function FuncionariosPage() {
         });
         toast({ title: 'Funcionário adicionado com sucesso!' });
       }
-      fetchEmployees();
+      fetchEmployees(); // Rebusca funcionários
       setIsFormOpen(false);
       setEditingEmployee(null);
     } catch (error: any) {
@@ -134,7 +132,7 @@ export default function FuncionariosPage() {
       try {
         await deleteDoc(doc(db, 'employees', employeeId));
         toast({ title: 'Funcionário excluído do Firestore!', description: 'Lembre-se de remover a conta do Firebase Authentication manualmente.' });
-        fetchEmployees();
+        fetchEmployees(); // Rebusca funcionários
       } catch (error) {
         console.error("Erro ao excluir funcionário do Firestore:", error);
         toast({ title: "Erro ao excluir funcionário do Firestore", variant: "destructive" });
@@ -149,9 +147,7 @@ export default function FuncionariosPage() {
     emp.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Se o usuário ainda está carregando (AuthProvider), ou se o papel do usuário ainda não foi definido,
-  // podemos mostrar um loader geral para evitar piscar a tela de "Acesso Negado".
-  if (isLoadingPage || !user) {
+  if (isAuthLoading || (isLoadingPage && isAdmin)) { // Mostra loader se auth está carregando OU se é admin e a página está carregando dados
     return (
       <div className="flex justify-center items-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -160,7 +156,7 @@ export default function FuncionariosPage() {
     );
   }
   
-  if (!isAdmin) { // Esta verificação agora acontece depois que 'user' e 'isLoadingPage' estão resolvidos
+  if (!isAdmin && user) { // Se o usuário está carregado mas não é admin
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
         <ShieldAlert className="h-24 w-24 text-destructive mb-6" />
@@ -171,6 +167,11 @@ export default function FuncionariosPage() {
     );
   }
   
+  // Se chegou aqui e é admin, mas isLoadingPage ainda é true (ex: fetch inicial falhou antes de setar false), pode mostrar loader
+  // Ou, se não for admin e user ainda não estiver definido (AuthProvider ainda não redirecionou), também pode mostrar loader
+  // Mas o if (isAuthLoading) acima deve cobrir isso.
+  // Se for admin, e !isLoadingPage, então exibe o conteúdo da página ou o estado de vazio.
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">

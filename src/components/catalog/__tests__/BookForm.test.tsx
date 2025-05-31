@@ -17,7 +17,7 @@ jest.mock('@/hooks/use-toast', () => ({
 
 describe('BookForm', () => {
   beforeEach(() => {
-    mockOnSubmit.mockReset(); // Use mockReset para limpar o estado e implementações
+    mockOnSubmit.mockReset();
     mockOnCancel.mockClear();
   });
 
@@ -54,6 +54,7 @@ describe('BookForm', () => {
     expect(screen.getByLabelText(/Título/i)).toHaveValue(initialData.title);
     expect(screen.getByLabelText(/Autor/i)).toHaveValue(initialData.author);
     expect(screen.getByLabelText(/ISBN/i)).toHaveValue(initialData.isbn);
+    // Para o Select, verificamos o texto visível no trigger quando um valor é selecionado
     expect(screen.getByRole('combobox', { name: /Gênero/i })).toHaveTextContent(initialData.genre);
     expect(screen.getByLabelText(/Ano de Publicação/i)).toHaveValue(initialData.publicationYear);
     expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toHaveValue(initialData.coverImageUrl);
@@ -68,11 +69,12 @@ describe('BookForm', () => {
     fireEvent.change(screen.getByLabelText(/Ano de Publicação/i), { target: { value: '2023' } });
     
     const genreTrigger = screen.getByRole('combobox', { name: /Gênero/i });
-    fireEvent.mouseDown(genreTrigger); // Abre o dropdown
+    fireEvent.click(genreTrigger); // Abre o dropdown (usar click é mais genérico)
 
     const genreToSelect = BOOK_GENRES[1]; // "Fantasia"
-    const optionElement = await screen.findByRole('option', { name: genreToSelect });
-    fireEvent.click(optionElement); // Seleciona o gênero
+    // Espera que a opção apareça e então clica nela
+    const optionElement = await screen.findByRole('option', { name: genreToSelect, hidden: false });
+    fireEvent.click(optionElement);
 
     fireEvent.click(screen.getByRole('button', { name: /Salvar Livro/i }));
 
@@ -83,7 +85,7 @@ describe('BookForm', () => {
         author: 'Novo Autor Criativo',
         isbn: '9876543210',
         genre: genreToSelect,
-        publicationYear: 2023,
+        publicationYear: 2023, // Zod coerce para número
         coverImageUrl: '', 
       });
     });
@@ -115,7 +117,7 @@ describe('BookForm', () => {
         author: initialData.author, 
         isbn: initialData.isbn, 
         genre: initialData.genre, 
-        publicationYear: 2021,
+        publicationYear: 2021, // Zod coerce para número
         coverImageUrl: initialData.coverImageUrl, 
       });
     });
@@ -135,7 +137,8 @@ describe('BookForm', () => {
     expect(await screen.findByText('Título é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('Autor é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('ISBN deve ter pelo menos 10 caracteres.')).toBeInTheDocument();
-    expect(await screen.findByText('Gênero é obrigatório.')).toBeInTheDocument(); // Este erro aparece se o select não for tocado
+    // O erro de Gênero aparecerá se não for selecionado
+    expect(await screen.findByText('Gênero é obrigatório.')).toBeInTheDocument(); 
     
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });

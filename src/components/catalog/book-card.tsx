@@ -45,7 +45,7 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
             alt={`Capa do livro ${book.title}`}
             layout="fill"
             objectFit="cover"
-            data-ai-hint="book cover"
+            data-ai-hint="capa livro"
           />
         </div>
         <CardTitle className="text-lg font-semibold leading-tight text-foreground truncate" title={book.title}>{book.title}</CardTitle>
@@ -53,7 +53,7 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
         <div className="absolute top-2 right-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`book-card-${book.id}-options-trigger`}>
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>

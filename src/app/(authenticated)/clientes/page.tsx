@@ -7,7 +7,7 @@ import { PlusCircle, UserRound, Loader2 } from 'lucide-react';
 import type { Client } from '@/lib/types';
 import { ClientCard } from '@/components/clientes/client-card';
 import { ClientForm } from '@/components/clientes/client-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'; // DialogTrigger removido
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
