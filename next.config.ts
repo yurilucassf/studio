@@ -23,6 +23,18 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'm.media-amazon.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'th.bing.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 };
