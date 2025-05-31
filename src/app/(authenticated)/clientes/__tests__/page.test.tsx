@@ -15,7 +15,6 @@ jest.mock('firebase/firestore', () => ({
   deleteDoc: jest.fn(),
   query: jest.fn((queryObj, ..._constraints) => queryObj),
   orderBy: jest.fn(() => ({ type: 'orderBy' })),
-  // Timestamp needed if your component uses it directly, but usually comes from server data
   Timestamp: {
     now: jest.fn(() => ({
       toDate: () => new Date(),
@@ -28,7 +27,7 @@ jest.mock('firebase/firestore', () => ({
   },
 }));
 
-// Import the mocked functions for configuration
+// Importar as funções mockadas para configuração
 import {
   collection,
   doc,
@@ -48,35 +47,35 @@ jest.mock('@/hooks/use-toast');
 const mockToast = jest.fn();
 (require('@/hooks/use-toast') as any).useToast = () => ({ toast: mockToast });
 
-// Mock child components
+// Mock componentes filhos
 jest.mock('@/components/clientes/client-card', () => ({
   ClientCard: jest.fn(({ client, onEdit, onDelete }) => (
     <div data-testid={`client-card-${client.id}`}>
       <h4>{client.name}</h4>
-      <button onClick={() => onEdit(client)}>Edit</button>
-      <button onClick={() => onDelete(client.id)}>Delete</button>
+      <button data-testid={`client-card-${client.id}-edit-button`} onClick={() => onEdit(client)}>Editar</button>
+      <button data-testid={`client-card-${client.id}-delete-button`} onClick={() => onDelete(client.id)}>Excluir</button>
     </div>
   )),
 }));
 
 jest.mock('@/components/clientes/client-form', () => ({
   ClientForm: jest.fn(({ onSubmit, onCancel, initialData }) => (
-    <form data-testid="client-form" onSubmit={(e) => { e.preventDefault(); onSubmit(initialData || { name: 'New Test Client', email: 'new@example.com' }); }}>
-      <button type="submit">Save Client Form</button>
-      <button type="button" onClick={onCancel}>Cancel Client Form</button>
+    <form data-testid="client-form" onSubmit={(e) => { e.preventDefault(); onSubmit(initialData || { name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com' }); }}>
+      <button type="submit">Salvar Cliente (Form Mock)</button>
+      <button type="button" onClick={onCancel}>Cancelar (Form Mock)</button>
     </form>
   )),
 }));
 
 const mockClients: Client[] = [
-  { id: '1', name: 'Alice Wonderland', email: 'alice@example.com', phone: '111-1111' },
-  { id: '2', name: 'Bob The Builder', email: 'bob@example.com', phone: '222-2222' },
+  { id: '1', name: 'Alice Silva', email: 'alice@example.com', phone: '111-1111' },
+  { id: '2', name: 'Roberto Souza', email: 'roberto@example.com', phone: '222-2222' },
 ];
 
 describe('ClientesPage', () => {
   beforeEach(() => {
     (getDocs as jest.Mock).mockReset();
-    (addDoc as jest.Mock).mockReset().mockResolvedValue({ id: 'new-client-id' });
+    (addDoc as jest.Mock).mockReset().mockResolvedValue({ id: 'novo-cliente-id' });
     (updateDoc as jest.Mock).mockReset().mockResolvedValue(undefined);
     (deleteDoc as jest.Mock).mockReset().mockResolvedValue(undefined);
     (collection as jest.Mock).mockReset().mockImplementation((_db, path) => ({ type: 'collectionRef', path }));
@@ -85,21 +84,21 @@ describe('ClientesPage', () => {
     (global.confirm as jest.Mock).mockReturnValue(true);
   });
 
-  it('renders loading state initially then displays clients', async () => {
+  it('renderiza estado de carregamento inicialmente e depois exibe os clientes', async () => {
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
     render(<ClientesPage />);
     expect(screen.getByText(/Carregando clientes.../i)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('Alice Wonderland')).toBeInTheDocument();
-      expect(screen.getByText('Bob The Builder')).toBeInTheDocument();
+      expect(screen.getByText('Alice Silva')).toBeInTheDocument();
+      expect(screen.getByText('Roberto Souza')).toBeInTheDocument();
     });
     expect(getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('displays empty state if no clients are found', async () => {
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // No clients
+  it('exibe estado de vazio se nenhum cliente for encontrado', async () => {
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // Sem clientes
 
     render(<ClientesPage />);
     await waitFor(() => {
@@ -107,7 +106,7 @@ describe('ClientesPage', () => {
     });
   });
 
-  it('opens ClientForm when "Adicionar Novo Cliente" button is clicked', async () => {
+  it('abre ClientForm quando o botão "Adicionar Novo Cliente" é clicado', async () => {
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
 
     render(<ClientesPage />);
@@ -121,10 +120,10 @@ describe('ClientesPage', () => {
     });
   });
 
-  it('adds a new client successfully', async () => {
+  it('adiciona um novo cliente com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [] }) // Initial load
-      .mockResolvedValueOnce({ docs: [{ id: 'new-client-id', data: () => ({ name: 'New Test Client', email: 'new@example.com' }) }] }); // After adding
+      .mockResolvedValueOnce({ docs: [] }) // Carga inicial
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com' }) }] }); // Após adicionar
 
     render(<ClientesPage />);
     await screen.findByText(/Nenhum cliente encontrado/i);
@@ -137,49 +136,47 @@ describe('ClientesPage', () => {
     await waitFor(() => {
       expect(addDoc).toHaveBeenCalledTimes(1);
       expect(addDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'collectionRef', path: 'clients' }), {
-        name: 'New Test Client',
-        email: 'new@example.com',
+        name: 'Novo Cliente de Teste',
+        email: 'novo_cliente@example.com',
       });
       expect(mockToast).toHaveBeenCalledWith({ title: 'Cliente adicionado com sucesso!' });
     });
-    await waitFor(() => expect(screen.getByText('New Test Client')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Novo Cliente de Teste')).toBeInTheDocument());
   });
 
-  it('edits an existing client successfully', async () => {
+  it('edita um cliente existente com sucesso', async () => {
     const editableClient = mockClients[0];
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] });
+    (getDocs as jest.Mock)
+      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] }) // Carga Inicial
+      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => ({ ...editableClient, name: 'Novo Cliente de Teste' /* Vem do mock do form */}) }] }); // Após Editar
       
     render(<ClientesPage />);
     await screen.findByText(editableClient.name);
 
-    const clientCard = screen.getByTestId(`client-card-${editableClient.id}`);
-    fireEvent.click(clientCard.querySelector('button[aria-label="Editar"], button:not([aria-label="Excluir"])')!); // Simplified selector for edit
+    fireEvent.click(screen.getByTestId(`client-card-${editableClient.id}-edit-button`));
 
     await screen.findByTestId('client-form'); 
-    fireEvent.submit(screen.getByTestId('client-form')); // Assumes form submit uses initialData passed to it
+    fireEvent.submit(screen.getByTestId('client-form')); 
 
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
-      // In this mock, BookForm submits its initialData if present, so check for that
       expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'clients', id: editableClient.id }), 
-        expect.objectContaining({ name: editableClient.name, email: editableClient.email })
+        expect.objectContaining({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com' }) // Do mock do ClientForm
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Cliente atualizado com sucesso!' });
     });
+     await waitFor(() => expect(screen.getByText('Novo Cliente de Teste')).toBeInTheDocument());
   });
 
-  it('deletes a client successfully', async () => {
+  it('exclui um cliente com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) // Initial load
-      .mockResolvedValueOnce({ docs: [mockClients[1]].map(c => ({ id: c.id, data: () => c })) }); // After delete
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) // Carga inicial
+      .mockResolvedValueOnce({ docs: [mockClients[1]].map(c => ({ id: c.id, data: () => c })) }); // Após excluir
 
     render(<ClientesPage />);
     await screen.findByText(mockClients[0].name);
     
-    const clientCard = screen.getByTestId(`client-card-${mockClients[0].id}`);
-    // The delete button is inside an AlertDialog, so we need to trigger that first
-    // For simplicity, we assume the ClientCard mock calls onDelete directly when its delete button is clicked
-    fireEvent.click(clientCard.querySelectorAll('button')[1]); // Assuming delete is the second button in the mock
+    fireEvent.click(screen.getByTestId(`client-card-${mockClients[0].id}-delete-button`));
 
     expect(global.confirm).toHaveBeenCalledWith('Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.');
     
@@ -191,26 +188,24 @@ describe('ClientesPage', () => {
     await waitFor(() => expect(screen.queryByText(mockClients[0].name)).not.toBeInTheDocument());
   });
 
-  it('filters clients based on search term', async () => {
+  it('filtra clientes com base no termo de busca', async () => {
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
     render(<ClientesPage />);
-    await screen.findByText('Alice Wonderland');
-    await screen.findByText('Bob The Builder');
+    await screen.findByText('Alice Silva');
+    await screen.findByText('Roberto Souza');
 
     const searchInput = screen.getByPlaceholderText(/Buscar cliente por nome, email ou telefone.../i);
     fireEvent.change(searchInput, { target: { value: 'Alice' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Alice Wonderland')).toBeInTheDocument();
-      expect(screen.queryByText('Bob The Builder')).not.toBeInTheDocument();
+      expect(screen.getByText('Alice Silva')).toBeInTheDocument();
+      expect(screen.queryByText('Roberto Souza')).not.toBeInTheDocument();
     });
 
-    fireEvent.change(searchInput, { target: { value: 'bob@example.com' } });
+    fireEvent.change(searchInput, { target: { value: 'roberto@example.com' } });
     await waitFor(() => {
-      expect(screen.queryByText('Alice Wonderland')).not.toBeInTheDocument();
-      expect(screen.getByText('Bob The Builder')).toBeInTheDocument();
+      expect(screen.queryByText('Alice Silva')).not.toBeInTheDocument();
+      expect(screen.getByText('Roberto Souza')).toBeInTheDocument();
     });
   });
 });
-
-    

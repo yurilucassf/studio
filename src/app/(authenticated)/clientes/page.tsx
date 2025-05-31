@@ -7,7 +7,7 @@ import { PlusCircle, UserRound, Loader2 } from 'lucide-react';
 import type { Client } from '@/lib/types';
 import { ClientCard } from '@/components/clientes/client-card';
 import { ClientForm } from '@/components/clientes/client-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'; // DialogTrigger removido
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
@@ -30,7 +30,7 @@ export default function ClientesPage() {
       const clientsData = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Client));
       setClients(clientsData);
     } catch (error) {
-      console.error("Error fetching clients:", error);
+      console.error("Erro ao buscar clientes:", error);
       toast({ title: "Erro ao buscar clientes", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -56,7 +56,7 @@ export default function ClientesPage() {
       setIsFormOpen(false);
       setEditingClient(null);
     } catch (error) {
-      console.error("Error submitting client form:", error);
+      console.error("Erro ao salvar cliente:", error);
       toast({ title: "Erro ao salvar cliente", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -76,7 +76,7 @@ export default function ClientesPage() {
         toast({ title: 'Cliente excluído com sucesso!' });
         fetchClients();
       } catch (error) {
-        console.error("Error deleting client:", error);
+        console.error("Erro ao excluir cliente:", error);
         toast({ title: "Erro ao excluir cliente", variant: "destructive" });
       } finally {
         setIsLoading(false);
@@ -95,14 +95,15 @@ export default function ClientesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-headline font-semibold text-foreground">Gestão de Clientes</h1>
         <Dialog open={isFormOpen} onOpenChange={(open) => { setIsFormOpen(open); if (!open) setEditingClient(null); }}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Cliente
-            </Button>
-          </DialogTrigger>
+           <Button onClick={() => { setEditingClient(null); setIsFormOpen(true); }}>
+            <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Cliente
+          </Button>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle>{editingClient ? 'Editar Cliente' : 'Adicionar Novo Cliente'}</DialogTitle>
+              <DialogDescription>
+                {editingClient ? 'Modifique os detalhes do cliente abaixo.' : 'Preencha os detalhes abaixo para adicionar um novo cliente.'}
+              </DialogDescription>
             </DialogHeader>
             <ClientForm
               onSubmit={handleFormSubmit}

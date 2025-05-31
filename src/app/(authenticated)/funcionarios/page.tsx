@@ -7,14 +7,14 @@ import { PlusCircle, UserCog, ShieldAlert, Loader2 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { EmployeeCard } from '@/components/funcionarios/employee-card';
 import { EmployeeForm } from '@/components/funcionarios/employee-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'; // DialogTrigger removido
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { db, auth as firebaseAuth } from '@/lib/firebase'; // Renamed auth to firebaseAuth to avoid conflict
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, query, orderBy } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth'; // For creating and potentially deleting auth users
+import { db, auth as firebaseAuth } from '@/lib/firebase';
+import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, orderBy } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth'; 
 import type { AddEmployeeFormData, EditEmployeeFormData } from '@/lib/schemas';
 
 
@@ -24,8 +24,8 @@ export default function FuncionariosPage() {
   const { toast } = useToast();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isLoadingPage, setIsLoadingPage] = useState(true); // For overall page readiness
-  const [isSubmitting, setIsSubmitting] = useState(false); // For form operations
+  const [isLoadingPage, setIsLoadingPage] = useState(true); 
+  const [isSubmitting, setIsSubmitting] = useState(false); 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,7 +33,7 @@ export default function FuncionariosPage() {
   const isAdmin = user?.role === 'admin';
 
    const fetchEmployees = useCallback(async () => {
-    if (!isAdmin) {
+    if (!isAdmin && user) { // Adicionado 'user' para garantir que o estado do usuário já foi carregado
       setIsLoadingPage(false);
       return;
     }
@@ -44,14 +44,22 @@ export default function FuncionariosPage() {
       const employeesData = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Employee));
       setEmployees(employeesData);
     } catch (error) {
-      console.error("Error fetching employees:", error);
+      console.error("Erro ao buscar funcionários:", error);
       toast({ title: "Erro ao buscar funcionários", variant: "destructive" });
     } finally {
       setIsLoadingPage(false);
     }
-  }, [isAdmin, toast]);
+  }, [isAdmin, toast, user]); // Adicionado 'user' como dependência
 
   useEffect(() => {
+    // A verificação do admin e o redirecionamento são movidos para dentro do fetchEmployees/renderização
+    // para garantir que o estado do usuário (user) já foi carregado pelo AuthProvider.
+    fetchEmployees();
+  }, [fetchEmployees]);
+
+  useEffect(() => {
+    // Este useEffect agora é redundante se a lógica de redirecionamento está no render ou fetch.
+    // Mantido por enquanto, mas pode ser simplificado.
     if (!isLoadingPage && !isAdmin && user) { 
       toast({ title: "Acesso Negado", description: "Você não tem permissão para acessar esta página.", variant: "destructive" });
       router.replace('/dashboard');
@@ -59,14 +67,10 @@ export default function FuncionariosPage() {
   }, [user, isAdmin, router, toast, isLoadingPage]);
 
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
-
   const handleFormSubmit = async (formData: AddEmployeeFormData | EditEmployeeFormData) => {
     setIsSubmitting(true);
     try {
-      if (editingEmployee) { // Edit existing employee
+      if (editingEmployee) { 
         const { name, role } = formData as EditEmployeeFormData;
         if (editingEmployee.id === user?.uid && editingEmployee.role === 'admin' && role === 'employee') {
           const adminCount = employees.filter(e => e.role === 'admin').length;
@@ -79,19 +83,16 @@ export default function FuncionariosPage() {
         const employeeRef = doc(db, 'employees', editingEmployee.id);
         await updateDoc(employeeRef, { name, role });
         toast({ title: 'Funcionário atualizado com sucesso!' });
-      } else { // Add new employee
+      } else { 
         const { name, email, password, role } = formData as AddEmployeeFormData;
-        // 1. Create Firebase Auth user
         const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
         const newAuthUser = userCredential.user;
         
-        // 2. Add employee details to Firestore, using UID as document ID
         const employeeRef = doc(db, 'employees', newAuthUser.uid);
         await setDoc(employeeRef, {
           name,
           email,
           role,
-          // id is the doc id (newAuthUser.uid)
         });
         toast({ title: 'Funcionário adicionado com sucesso!' });
       }
@@ -99,8 +100,7 @@ export default function FuncionariosPage() {
       setIsFormOpen(false);
       setEditingEmployee(null);
     } catch (error: any) {
-      console.error("Error submitting employee form:", error);
-      // Customize error messages for auth errors
+      console.error("Erro ao salvar funcionário:", error);
       if (error.code?.startsWith('auth/')) {
         toast({ title: "Erro de Autenticação", description: error.message, variant: "destructive" });
       } else {
@@ -133,13 +133,10 @@ export default function FuncionariosPage() {
       setIsSubmitting(true);
       try {
         await deleteDoc(doc(db, 'employees', employeeId));
-        // Note: Firebase Auth user deletion requires admin privileges and is complex from client-side.
-        // Usually handled by a backend function or manually in Firebase console.
-        // For this example, we only delete from Firestore and inform the user.
         toast({ title: 'Funcionário excluído do Firestore!', description: 'Lembre-se de remover a conta do Firebase Authentication manualmente.' });
         fetchEmployees();
       } catch (error) {
-        console.error("Error deleting employee from Firestore:", error);
+        console.error("Erro ao excluir funcionário do Firestore:", error);
         toast({ title: "Erro ao excluir funcionário do Firestore", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
@@ -152,7 +149,18 @@ export default function FuncionariosPage() {
     emp.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!isAdmin && !isLoadingPage && user) {
+  // Se o usuário ainda está carregando (AuthProvider), ou se o papel do usuário ainda não foi definido,
+  // podemos mostrar um loader geral para evitar piscar a tela de "Acesso Negado".
+  if (isLoadingPage || !user) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-muted-foreground">Carregando...</p>
+      </div>
+    );
+  }
+  
+  if (!isAdmin) { // Esta verificação agora acontece depois que 'user' e 'isLoadingPage' estão resolvidos
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
         <ShieldAlert className="h-24 w-24 text-destructive mb-6" />
@@ -163,29 +171,20 @@ export default function FuncionariosPage() {
     );
   }
   
-  if (isLoadingPage && isAdmin) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-muted-foreground">Carregando funcionários...</p>
-      </div>
-    );
-  }
-
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-headline font-semibold text-foreground">Gerenciar Funcionários</h1>
         <Dialog open={isFormOpen} onOpenChange={(open) => { setIsFormOpen(open); if (!open) setEditingEmployee(null); }}>
-          <DialogTrigger asChild>
-            <Button disabled={!isAdmin}>
-              <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Funcionário
-            </Button>
-          </DialogTrigger>
+           <Button onClick={() => { setEditingEmployee(null); setIsFormOpen(true); }}>
+            <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Funcionário
+          </Button>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle>{editingEmployee ? 'Editar Funcionário' : 'Adicionar Novo Funcionário'}</DialogTitle>
+              <DialogDescription>
+                {editingEmployee ? 'Modifique os detalhes do funcionário abaixo.' : 'Preencha os detalhes abaixo para adicionar um novo funcionário.'}
+              </DialogDescription>
             </DialogHeader>
             <EmployeeForm
               onSubmit={handleFormSubmit}
@@ -208,7 +207,7 @@ export default function FuncionariosPage() {
         disabled={!isAdmin}
       />
 
-      {!isLoadingPage && isAdmin && filteredEmployees.length === 0 ? (
+      {filteredEmployees.length === 0 ? (
         <div className="text-center py-10 bg-card rounded-lg shadow">
           <UserCog className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold text-foreground">Nenhum funcionário encontrado</h3>
@@ -220,7 +219,7 @@ export default function FuncionariosPage() {
             .
           </p>
         </div>
-      ) : isAdmin ? (
+      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEmployees.map((employee) => (
             <EmployeeCard
@@ -233,7 +232,7 @@ export default function FuncionariosPage() {
             />
           ))}
         </div>
-      ) : null }
+      ) }
     </div>
   );
 }

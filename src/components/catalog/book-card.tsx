@@ -1,11 +1,12 @@
+
 'use client';
 
 import Image from 'next/image';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription as ShadCnCardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { ClientSelectForLoan } from './client-select-for-loan';
 import { MoreVertical, Edit3, Trash2, ArrowRightLeft, Undo, CheckCircle } from 'lucide-react';
 import type { Book, Client } from '@/lib/types';
@@ -44,10 +45,11 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
             alt={`Capa do livro ${book.title}`}
             layout="fill"
             objectFit="cover"
+            data-ai-hint="book cover"
           />
         </div>
         <CardTitle className="text-lg font-semibold leading-tight text-foreground truncate" title={book.title}>{book.title}</CardTitle>
-        <CardDescription className="text-sm text-muted-foreground truncate">{book.author}</CardDescription>
+        <ShadCnCardDescription className="text-sm text-muted-foreground truncate">{book.author}</ShadCnCardDescription>
         <div className="absolute top-2 right-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -56,10 +58,10 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit(book)}>
+              <DropdownMenuItem data-testid={`book-card-${book.id}-edit-action`} onClick={() => onEdit(book)}>
                 <Edit3 className="mr-2 h-4 w-4" /> Editar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDelete(book.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+              <DropdownMenuItem data-testid={`book-card-${book.id}-delete-action`} onClick={() => onDelete(book.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                 <Trash2 className="mr-2 h-4 w-4" /> Excluir
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -87,13 +89,14 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
         {book.status === 'Disponível' ? (
           <Dialog open={isLoanDialogOpen} onOpenChange={setIsLoanDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="w-full bg-primary hover:bg-primary/90">
+              <Button data-testid={`book-card-${book.id}-loan-action`} className="w-full bg-primary hover:bg-primary/90">
                 <ArrowRightLeft className="mr-2 h-4 w-4" /> Emprestar
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Emprestar Livro: {book.title}</DialogTitle>
+                <DialogDescription>Selecione o cliente para qual este livro será emprestado.</DialogDescription>
               </DialogHeader>
               <ClientSelectForLoan clients={clients} onSelectClient={handleLoan} />
             </DialogContent>
@@ -101,14 +104,14 @@ export function BookCard({ book, clients, onEdit, onDelete, onLoanOrReturn }: Bo
         ) : (
           <Dialog open={isReturnDialogOpen} onOpenChange={setIsReturnDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="w-full">
+              <Button data-testid={`book-card-${book.id}-return-action`} variant="outline" className="w-full">
                 <Undo className="mr-2 h-4 w-4" /> Devolver
               </Button>
             </DialogTrigger>
              <DialogContent>
               <DialogHeader>
                 <DialogTitle>Confirmar Devolução</DialogTitle>
-                <CardDescription>Deseja registrar a devolução do livro "{book.title}"?</CardDescription>
+                <DialogDescription>Deseja registrar a devolução do livro "{book.title}"?</DialogDescription>
               </DialogHeader>
               <div className="flex justify-end gap-2 mt-4">
                 <Button variant="outline" onClick={() => setIsReturnDialogOpen(false)}>Cancelar</Button>

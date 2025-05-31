@@ -7,7 +7,7 @@ import { PlusCircle, BookOpenCheck, Loader2 } from 'lucide-react';
 import type { Book, Client } from '@/lib/types';
 import { BookCard } from '@/components/catalog/book-card';
 import { BookForm } from '@/components/catalog/book-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'; // DialogTrigger removido daqui
 import { BookFilters, type BookFiltersState } from '@/components/catalog/book-filters';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
@@ -49,7 +49,7 @@ export default function CatalogPage() {
       setClients(clientsData);
 
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error("Erro ao buscar dados:", error);
       toast({ title: "Erro ao buscar dados", description: "Não foi possível carregar livros e clientes.", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -73,7 +73,6 @@ export default function CatalogPage() {
         const bookRef = doc(db, 'books', editingBook.id);
         await updateDoc(bookRef, {
             ...bookPayload,
-            // Retain existing status and loan details unless explicitly changed elsewhere
             status: editingBook.status,
             borrowedByClientId: editingBook.borrowedByClientId,
             borrowedByName: editingBook.borrowedByName,
@@ -92,11 +91,11 @@ export default function CatalogPage() {
         });
         toast({ title: 'Livro adicionado com sucesso!' });
       }
-      fetchBooksAndClients(); // Refresh list
+      fetchBooksAndClients(); 
       setIsFormOpen(false);
       setEditingBook(null);
     } catch (error) {
-      console.error("Error submitting form:", error);
+      console.error("Erro ao salvar livro:", error);
       toast({ title: "Erro ao salvar livro", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -112,7 +111,6 @@ export default function CatalogPage() {
     if (confirm('Tem certeza que deseja excluir este livro?')) {
       setIsLoading(true);
       try {
-        // Also delete related loan activities
         const batch = writeBatch(db);
         const loanActivitiesQuery = query(collection(db, "loanActivities"), where("bookId", "==", bookId));
         const loanActivitiesSnapshot = await getDocs(loanActivitiesQuery);
@@ -126,9 +124,9 @@ export default function CatalogPage() {
         await batch.commit();
 
         toast({ title: 'Livro e histórico de empréstimos excluídos com sucesso!' });
-        fetchBooksAndClients(); // Refresh list
+        fetchBooksAndClients(); 
       } catch (error) {
-        console.error("Error deleting book:", error);
+        console.error("Erro ao excluir livro:", error);
         toast({ title: "Erro ao excluir livro", variant: "destructive" });
       } finally {
         setIsLoading(false);
@@ -140,7 +138,7 @@ export default function CatalogPage() {
     setIsLoading(true);
     try {
       const bookRef = doc(db, 'books', book.id);
-      let clientName = book.borrowedByName || ''; // For returns, use existing name
+      let clientName = book.borrowedByName || ''; 
       let finalClientId = book.borrowedByClientId || '';
 
       if (action === 'loan') {
@@ -154,32 +152,31 @@ export default function CatalogPage() {
         if (clientDocSnap.exists()) {
           clientName = clientDocSnap.data().name;
         } else {
-          throw new Error("Client not found");
+          throw new Error("Cliente não encontrado");
         }
       }
 
       const updatedBookData = {
-        status: action === 'loan' ? 'Emprestado' : ('Disponível' as Book['status']),
+        status: action === 'loan' ? 'Emprestado' : ('Disponível'as Book['status']),
         borrowedByClientId: action === 'loan' ? finalClientId : null,
         borrowedByName: action === 'loan' ? clientName : null,
         borrowedDate: action === 'loan' ? Timestamp.now() : null,
       };
       await updateDoc(bookRef, updatedBookData);
 
-      // Add to loanActivities
       await addDoc(collection(db, 'loanActivities'), {
         bookId: book.id,
         bookTitle: book.title,
-        clientId: finalClientId, // Use finalClientId which is set for both loan and return logic path. For return, it's the ID of who borrowed it.
-        clientName: clientName, // Use determined clientName. For return, it's who borrowed it.
+        clientId: finalClientId, 
+        clientName: clientName, 
         loanDate: Timestamp.now(),
         type: action,
       });
 
       toast({ title: `Livro ${action === 'loan' ? 'emprestado' : 'devolvido'} com sucesso!` });
-      fetchBooksAndClients(); // Refresh list
+      fetchBooksAndClients(); 
     } catch (error) {
-      console.error("Error processing loan/return:", error);
+      console.error("Erro ao processar empréstimo/devolução:", error);
       toast({ title: "Erro ao processar empréstimo/devolução", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -207,14 +204,15 @@ export default function CatalogPage() {
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-headline font-semibold text-foreground">Catálogo de Livros</h1>
         <Dialog open={isFormOpen} onOpenChange={(open) => { setIsFormOpen(open); if (!open) setEditingBook(null); }}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Livro
-            </Button>
-          </DialogTrigger>
+          <Button onClick={() => { setEditingBook(null); setIsFormOpen(true); }}>
+            <PlusCircle className="mr-2 h-5 w-5" /> Adicionar Novo Livro
+          </Button>
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
               <DialogTitle>{editingBook ? 'Editar Livro' : 'Adicionar Novo Livro'}</DialogTitle>
+              <DialogDescription>
+                {editingBook ? 'Modifique os detalhes do livro abaixo.' : 'Preencha os detalhes abaixo para adicionar um novo livro ao catálogo.'}
+              </DialogDescription>
             </DialogHeader>
             <BookForm
               onSubmit={handleFormSubmit}

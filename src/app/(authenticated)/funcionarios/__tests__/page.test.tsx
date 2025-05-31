@@ -13,7 +13,7 @@ jest.mock('firebase/firestore', () => ({
   doc: jest.fn(),
   setDoc: jest.fn(),
   getDocs: jest.fn(),
-  addDoc: jest.fn(), // Though setDoc is used for adding with UID
+  // addDoc: jest.fn(), // setDoc é usado para adicionar com UID
   updateDoc: jest.fn(),
   deleteDoc: jest.fn(),
   query: jest.fn((queryObj, ..._constraints) => queryObj),
@@ -23,12 +23,11 @@ jest.mock('firebase/firestore', () => ({
 // Mock 'firebase/auth'
 jest.mock('firebase/auth', () => ({
   createUserWithEmailAndPassword: jest.fn(),
-  deleteUser: jest.fn(), // Though not directly called by component, good to have if logic changes
-  // getAuth: jest.fn() // If your firebase.ts calls getAuth() which is typical
+  deleteUser: jest.fn(),
+  getAuth: jest.fn(() => ({ currentUser: { uid: 'admin1' }})), // Mock básico para getAuth
 }));
 
-
-// Import the mocked functions for configuration
+// Importar as funções mockadas para configuração
 import {
   collection,
   doc,
@@ -39,11 +38,10 @@ import {
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 
-
 // Mock '@/lib/firebase'
 jest.mock('@/lib/firebase', () => ({
-  db: { app: {} }, // Placeholder db
-  auth: { name: 'mockedFirebaseAuth' }, // Placeholder auth, matching component's firebaseAuth
+  db: { app: {} }, 
+  auth: { name: 'mockedFirebaseAuth' }, 
 }));
 
 // Mock hooks
@@ -58,13 +56,13 @@ jest.mock('next/navigation');
 const mockUseRouter = useRouter as jest.Mock;
 const mockRouterReplace = jest.fn();
 
-// Mock child components
+// Mock componentes filhos
 jest.mock('@/components/funcionarios/employee-card', () => ({
-  EmployeeCard: jest.fn(({ employee, onEdit, onDelete }) => (
+  EmployeeCard: jest.fn(({ employee, onEdit, onDelete, currentUserId, isLastAdmin }) => (
     <div data-testid={`employee-card-${employee.id}`}>
       <h5>{employee.name}</h5>
-      <button onClick={() => onEdit(employee)}>Edit</button>
-      <button onClick={() => onDelete(employee.id, employee.role)}>Delete</button>
+      <button data-testid={`employee-card-${employee.id}-edit-button`} onClick={() => onEdit(employee)} disabled={currentUserId === employee.id && isLastAdmin && employee.role === 'admin'}>Editar</button>
+      <button data-testid={`employee-card-${employee.id}-delete-button`} onClick={() => onDelete(employee.id, employee.role)} disabled={currentUserId === employee.id || (isLastAdmin && employee.role === 'admin')}>Excluir</button>
     </div>
   )),
 }));
@@ -73,25 +71,24 @@ jest.mock('@/components/funcionarios/employee-form', () => ({
   EmployeeForm: jest.fn(({ onSubmit, onCancel, initialData, isSubmitting }) => (
     <form data-testid="employee-form" onSubmit={(e) => { 
         e.preventDefault(); 
-        if (initialData) { // Edit
-            onSubmit({ name: 'Updated Name', role: 'employee' });
-        } else { // Add
-            onSubmit({ name: 'New Employee', email: 'newemp@example.com', password: 'password123', role: 'employee' });
+        if (initialData) { 
+            onSubmit({ name: 'Nome Atualizado Mock', role: 'employee' });
+        } else { 
+            onSubmit({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', password: 'password123', role: 'employee' });
         }
     }}>
-      <button type="submit" disabled={isSubmitting}>Save Employee Form</button>
-      <button type="button" onClick={onCancel} disabled={isSubmitting}>Cancel Employee Form</button>
+      <button type="submit" disabled={isSubmitting}>Salvar Funcionário (Form Mock)</button>
+      <button type="button" onClick={onCancel} disabled={isSubmitting}>Cancelar (Form Mock)</button>
     </form>
   )),
 }));
 
-
-const mockAdminUser: User = { uid: 'admin1', email: 'admin@example.com', name: 'Admin User', role: 'admin' };
-const mockEmployeeUser: User = { uid: 'emp1', email: 'emp@example.com', name: 'Employee User', role: 'employee' };
+const mockAdminUser: User = { uid: 'admin1', email: 'admin@example.com', name: 'Usuário Admin', role: 'admin' };
+const mockEmployeeUser: User = { uid: 'emp1', email: 'emp@example.com', name: 'Usuário Funcionário', role: 'employee' };
 
 const mockEmployees: Employee[] = [
-  { id: 'admin1', name: 'Admin User', email: 'admin@example.com', role: 'admin' },
-  { id: 'emp2', name: 'Jane Doe', email: 'jane@example.com', role: 'employee' },
+  { id: 'admin1', name: 'Usuário Admin', email: 'admin@example.com', role: 'admin' },
+  { id: 'emp2', name: 'Joana Silva', email: 'joana@example.com', role: 'employee' },
 ];
 
 describe('FuncionariosPage', () => {
@@ -100,7 +97,7 @@ describe('FuncionariosPage', () => {
     (setDoc as jest.Mock).mockReset().mockResolvedValue(undefined);
     (updateDoc as jest.Mock).mockReset().mockResolvedValue(undefined);
     (deleteDoc as jest.Mock).mockReset().mockResolvedValue(undefined);
-    (createUserWithEmailAndPassword as jest.Mock).mockReset().mockResolvedValue({ user: { uid: 'new-auth-uid' } });
+    (createUserWithEmailAndPassword as jest.Mock).mockReset().mockResolvedValue({ user: { uid: 'novo-auth-uid' } });
     (collection as jest.Mock).mockReset().mockImplementation((_db, path) => ({ type: 'collectionRef', path }));
     (doc as jest.Mock).mockReset().mockImplementation((_db, path, id) => ({ type: 'docRef', path, id }));
     
@@ -110,38 +107,34 @@ describe('FuncionariosPage', () => {
     (global.confirm as jest.Mock).mockReturnValue(true);
   });
 
-  it('redirects non-admin users and shows toast', async () => {
+  it('redireciona usuários não-admin e mostra toast', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockEmployeeUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // fetchEmployees call
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
 
     render(<FuncionariosPage />);
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith({ title: "Acesso Negado", description: "Você não tem permissão para acessar esta página.", variant: "destructive" });
       expect(mockRouterReplace).toHaveBeenCalledWith('/dashboard');
-      // Check for access denied message if component renders it before redirect completes fully
       expect(screen.getByText(/Acesso Negado/i)).toBeInTheDocument();
     });
   });
   
-  it('renders loading state initially for admin then displays employees', async () => {
+  it('renderiza estado de carregamento inicialmente para admin e depois exibe funcionários', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) });
 
     render(<FuncionariosPage />);
-    // Initial render might show loading or brief "access denied" if isLoadingPage flips fast.
-    // The key is to wait for the final state.
-    // If isLoadingPage is initially true, the "Carregando funcionários..." will show.
     expect(screen.getByText(/Carregando funcionários.../i)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('Admin User')).toBeInTheDocument();
-      expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+      expect(screen.getByText('Usuário Admin')).toBeInTheDocument();
+      expect(screen.getByText('Joana Silva')).toBeInTheDocument();
     });
     expect(getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('displays empty state for admin if no employees are found', async () => {
+  it('exibe estado de vazio para admin se nenhum funcionário for encontrado', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); 
 
@@ -151,7 +144,7 @@ describe('FuncionariosPage', () => {
     });
   });
 
-  it('opens EmployeeForm when "Adicionar Novo Funcionário" button is clicked by admin', async () => {
+  it('abre EmployeeForm quando o botão "Adicionar Novo Funcionário" é clicado por admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
 
@@ -166,11 +159,11 @@ describe('FuncionariosPage', () => {
     });
   });
 
-  it('adds a new employee successfully for admin', async () => {
+  it('adiciona um novo funcionário com sucesso para admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    (getDocs as jest.Mock) // For fetchEmployees
-      .mockResolvedValueOnce({ docs: [] }) // Initial
-      .mockResolvedValueOnce({ docs: [{ id: 'new-auth-uid', data: () => ({ name: 'New Employee', email: 'newemp@example.com', role: 'employee' }) }]}); // After add
+    (getDocs as jest.Mock) 
+      .mockResolvedValueOnce({ docs: [] }) 
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-auth-uid', data: () => ({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', role: 'employee' }) }]}); 
 
     render(<FuncionariosPage />);
     await screen.findByText(/Nenhum funcionário encontrado/i);
@@ -181,27 +174,28 @@ describe('FuncionariosPage', () => {
     fireEvent.submit(screen.getByTestId('employee-form'));
 
     await waitFor(() => {
-      expect(createUserWithEmailAndPassword).toHaveBeenCalledWith(expect.anything(), 'newemp@example.com', 'password123');
-      expect(setDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'employees', id: 'new-auth-uid' }), {
-        name: 'New Employee',
-        email: 'newemp@example.com',
+      expect(createUserWithEmailAndPassword).toHaveBeenCalledWith(expect.anything(), 'novo_func@example.com', 'password123');
+      expect(setDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'employees', id: 'novo-auth-uid' }), {
+        name: 'Novo Funcionário Mock',
+        email: 'novo_func@example.com',
         role: 'employee',
       });
       expect(mockToast).toHaveBeenCalledWith({ title: 'Funcionário adicionado com sucesso!' });
     });
-    await waitFor(() => expect(screen.getByText('New Employee')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Novo Funcionário Mock')).toBeInTheDocument());
   });
 
-  it('edits an existing employee successfully for admin', async () => {
+  it('edita um funcionário existente com sucesso para admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    const editableEmployee = mockEmployees[1]; // Jane Doe
-     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) });
+    const editableEmployee = mockEmployees[1]; // Joana Silva
+     (getDocs as jest.Mock)
+        .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) })
+        .mockResolvedValueOnce({ docs: mockEmployees.map(e => e.id === editableEmployee.id ? { id: e.id, data: () => ({...e, name: 'Nome Atualizado Mock' })} : {id: e.id, data: () => e}) });
       
     render(<FuncionariosPage />);
     await screen.findByText(editableEmployee.name);
 
-    const employeeCard = screen.getByTestId(`employee-card-${editableEmployee.id}`);
-    fireEvent.click(employeeCard.querySelector('button[aria-label="Editar"], button:not([aria-label="Excluir"])')!);
+    fireEvent.click(screen.getByTestId(`employee-card-${editableEmployee.id}-edit-button`));
 
     await screen.findByTestId('employee-form'); 
     fireEvent.submit(screen.getByTestId('employee-form'));
@@ -209,24 +203,24 @@ describe('FuncionariosPage', () => {
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
       expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'employees', id: editableEmployee.id }), 
-        { name: 'Updated Name', role: 'employee' } // From the mock EmployeeForm's onSubmit
+        { name: 'Nome Atualizado Mock', role: 'employee' } 
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Funcionário atualizado com sucesso!' });
     });
+     await waitFor(() => expect(screen.getByText('Nome Atualizado Mock')).toBeInTheDocument());
   });
 
-  it('deletes an employee successfully for admin', async () => {
+  it('exclui um funcionário com sucesso para admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    const employeeToDelete = mockEmployees[1]; // Jane Doe
+    const employeeToDelete = mockEmployees[1]; // Joana Silva
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) }) // Initial load
-      .mockResolvedValueOnce({ docs: [mockEmployees[0]].map(e => ({ id: e.id, data: () => e })) }); // After delete
+      .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) }) 
+      .mockResolvedValueOnce({ docs: [mockEmployees[0]].map(e => ({ id: e.id, data: () => e })) }); 
 
     render(<FuncionariosPage />);
     await screen.findByText(employeeToDelete.name);
     
-    const employeeCard = screen.getByTestId(`employee-card-${employeeToDelete.id}`);
-    fireEvent.click(employeeCard.querySelectorAll('button')[1]); // Assuming delete is the second button
+    fireEvent.click(screen.getByTestId(`employee-card-${employeeToDelete.id}-delete-button`));
 
     expect(global.confirm).toHaveBeenCalledWith(expect.stringContaining('Tem certeza que deseja excluir este funcionário?'));
     
@@ -238,5 +232,3 @@ describe('FuncionariosPage', () => {
     await waitFor(() => expect(screen.queryByText(employeeToDelete.name)).not.toBeInTheDocument());
   });
 });
-
-    
