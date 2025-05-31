@@ -3,6 +3,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { AppSidebar } from '../app-sidebar';
+import { SidebarProvider } from '@/components/ui/sidebar'; // Import SidebarProvider
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
@@ -17,12 +18,12 @@ jest.mock('next/navigation', () => ({
   usePathname: jest.fn(),
 }));
 jest.mock('firebase/auth', () => ({
-  ...jest.requireActual('firebase/auth'), // Importa o módulo real para não quebrar outras coisas
+  ...jest.requireActual('firebase/auth'),
   signOut: jest.fn(() => Promise.resolve()),
-  getAuth: jest.fn(() => ({})), // Mock básico para getAuth se for usado
+  getAuth: jest.fn(() => ({})),
 }));
 jest.mock('@/lib/firebase', () => ({
-  auth: { name: 'mockedFirebaseAuth' }, // Mock do objeto auth exportado
+  auth: { name: 'mockedFirebaseAuth' },
 }));
 jest.mock('@/hooks/use-toast');
 
@@ -100,7 +101,11 @@ describe('AppSidebar', () => {
       setLoading: jest.fn(),
     });
     mockUsePathname.mockReturnValue(currentPath);
-    render(<AppSidebar />);
+    render(
+      <SidebarProvider>
+        <AppSidebar />
+      </SidebarProvider>
+    );
   };
 
   it('renderiza itens de navegação padrão para usuário funcionário', () => {
@@ -109,7 +114,8 @@ describe('AppSidebar', () => {
     expect(screen.getByText('Catálogo de Livros')).toBeInTheDocument();
     expect(screen.getByText('Clientes')).toBeInTheDocument();
     expect(screen.getByText(mockEmployeeUser.name!)).toBeInTheDocument();
-    expect(screen.getByText('Funcionário')).toBeInTheDocument(); // Role
+    // O papel é exibido como texto
+    expect(screen.getByText('Funcionário')).toBeInTheDocument();
   });
 
   it('não renderiza "Funcionários" para usuário funcionário', () => {
@@ -121,18 +127,16 @@ describe('AppSidebar', () => {
     setup(mockAdminUser);
     expect(screen.getByText('Funcionários')).toBeInTheDocument();
     expect(screen.getByText(mockAdminUser.name!)).toBeInTheDocument();
-    expect(screen.getByText('Administrador')).toBeInTheDocument(); // Role
+    // O papel é exibido como texto
+    expect(screen.getByText('Administrador')).toBeInTheDocument();
   });
 
   it('chama signOut e atualiza usuário ao clicar em Sair', async () => {
     setup(mockAdminUser);
-    const logoutButton = screen.getByRole('button', { name: /Sair/i }); // Ajuste o seletor se necessário
+    // O botão pode não ter o texto "Sair" diretamente visível se estiver colapsado,
+    // mas o aria-label deve estar presente.
+    const logoutButton = screen.getByRole('button', { name: /Sair/i });
     
-    // O botão "Sair" pode estar dentro de um elemento com "group-data-[collapsible=icon]:hidden"
-    // Se o sidebar estiver "expandido" (default), o texto "Sair" deve ser visível
-    // Se estiver "colapsado", apenas o ícone será visível, e o aria-label pode ser usado.
-    // Para o teste, assumimos que o texto "Sair" está acessível.
-
     fireEvent.click(logoutButton);
 
     await waitFor(() => {
@@ -145,7 +149,7 @@ describe('AppSidebar', () => {
 
   it('marca o item de menu "Painel" como ativo em /dashboard', () => {
     setup(mockAdminUser, '/dashboard');
-    const dashboardLink = screen.getByText('Painel').closest('a'); // Encontra o elemento 'a' pai
+    const dashboardLink = screen.getByText('Painel').closest('a');
     expect(dashboardLink).toHaveAttribute('data-active', 'true');
   });
 
@@ -167,11 +171,12 @@ describe('AppSidebar', () => {
         uid: 'userNoName123', 
         email: 'noname@example.com', 
         role: 'employee', 
-        displayName: 'noname@example.com', // Firebase pode usar email como displayName
+        displayName: 'noname@example.com',
         name: undefined 
     };
     setup(userWithoutName);
-    expect(screen.getByText('NO')).toBeInTheDocument(); // Fallback para "noname@example.com" -> NO
+    // O fallback de Avatar gera iniciais do nome ou email. "noname@example.com" -> NO
+    expect(screen.getByText('NO')).toBeInTheDocument(); 
   });
 
   it('lida com erro no signOut', async () => {
@@ -183,7 +188,7 @@ describe('AppSidebar', () => {
     await waitFor(() => {
       expect(signOut).toHaveBeenCalledTimes(1);
     });
-    expect(mockSetUser).not.toHaveBeenCalled(); // Não deve limpar o usuário se o signOut falhar
+    expect(mockSetUser).not.toHaveBeenCalled();
     expect(mockToast).toHaveBeenCalledWith({ title: 'Erro ao fazer logout', variant: 'destructive' });
     expect(mockRouterPush).not.toHaveBeenCalledWith('/login');
   });
