@@ -27,7 +27,6 @@ jest.mock('firebase/firestore', () => ({
   },
 }));
 
-// Importar as funções mockadas para configuração
 import {
   collection,
   doc,
@@ -37,17 +36,17 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 
-// Mock '@/lib/firebase'
+
 jest.mock('@/lib/firebase', () => ({
-  db: { app: {} }, // Placeholder db
+  db: { app: {} }, 
 }));
 
-// Mock hooks
+
 jest.mock('@/hooks/use-toast');
 const mockToast = jest.fn();
 (require('@/hooks/use-toast') as any).useToast = () => ({ toast: mockToast });
 
-// Mock componentes filhos
+
 jest.mock('@/components/clientes/client-card', () => ({
   ClientCard: jest.fn(({ client, onEdit, onDelete }) => (
     <div data-testid={`client-card-${client.id}`}>
@@ -58,11 +57,17 @@ jest.mock('@/components/clientes/client-card', () => ({
   )),
 }));
 
+const mockClientFormData = { name: 'Cliente Mockado Editado', email: 'editado@example.com', phone: '000000000' };
 jest.mock('@/components/clientes/client-form', () => ({
   ClientForm: jest.fn(({ onSubmit, onCancel, initialData }) => (
     <form data-testid="client-form" onSubmit={(e) => { 
         e.preventDefault(); 
-        onSubmit(initialData || { name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }); 
+        // Se initialData existe, significa que estamos editando, então submetemos os dados de edição mockados.
+        // Se não, estamos adicionando, então submetemos os dados de adição mockados.
+        const dataToSubmit = initialData 
+          ? mockClientFormData // Dados para simular edição
+          : { name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }; // Dados para simular adição
+        onSubmit(dataToSubmit); 
     }}>
       <button type="submit">Salvar Cliente (Form Mock)</button>
       <button type="button" onClick={onCancel}>Cancelar (Form Mock)</button>
@@ -87,10 +92,41 @@ describe('PaginaDeClientes', () => {
     (global.confirm as jest.Mock).mockReturnValue(true);
   });
 
+  it('renderiza estado de carregamento e depois exibe clientes', async () => {
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
+    render(<ClientesPage />);
+    expect(screen.getByText(/Carregando clientes.../i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Alice Silva')).toBeInTheDocument();
+      expect(screen.getByText('Roberto Souza')).toBeInTheDocument();
+    });
+  });
+
+  it('exibe estado de vazio se nenhum cliente for encontrado', async () => {
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
+    render(<ClientesPage />);
+    await waitFor(() => {
+      expect(screen.getByText(/Nenhum cliente encontrado/i)).toBeInTheDocument();
+    });
+  });
+
+  it('abre ClientForm quando o botão "Adicionar Novo Cliente" é clicado', async () => {
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
+    render(<ClientesPage />);
+    await waitFor(() => expect(screen.queryByTestId('client-form')).not.toBeInTheDocument());
+    
+    const addButton = screen.getByRole('button', { name: /Adicionar Novo Cliente/i });
+    fireEvent.click(addButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('client-form')).toBeInTheDocument();
+    });
+  });
+
   it('adiciona um novo cliente com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [] }) // Carga inicial
-      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] }); // Após adicionar
+      .mockResolvedValueOnce({ docs: [] }) 
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] }); 
 
     render(<ClientesPage />);
     await screen.findByText(/Nenhum cliente encontrado/i);
@@ -115,8 +151,8 @@ describe('PaginaDeClientes', () => {
   it('edita um cliente existente com sucesso', async () => {
     const editableClient = mockClients[0];
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] }) // Carga Inicial
-      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => ({ ...editableClient, name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] }); // Após Editar
+      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] }) 
+      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => mockClientFormData }] }); // Após Editar
       
     render(<ClientesPage />);
     await screen.findByText(editableClient.name);
@@ -128,18 +164,19 @@ describe('PaginaDeClientes', () => {
 
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
-      expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'clients', id: editableClient.id }), 
-        expect.objectContaining({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' })
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'docRef', path: 'clients', id: editableClient.id }), 
+        expect.objectContaining(mockClientFormData) // Verifica se foi chamado com os dados mockados para edição
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Cliente atualizado com sucesso!' });
     });
-     await waitFor(() => expect(screen.getByText('Novo Cliente de Teste')).toBeInTheDocument());
+     await waitFor(() => expect(screen.getByText(mockClientFormData.name)).toBeInTheDocument());
   });
 
   it('exclui um cliente com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) // Carga inicial
-      .mockResolvedValueOnce({ docs: [mockClients[1]].map(c => ({ id: c.id, data: () => c })) }); // Após excluir
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) 
+      .mockResolvedValueOnce({ docs: [mockClients[1]].map(c => ({ id: c.id, data: () => c })) });
 
     render(<ClientesPage />);
     await screen.findByText(mockClients[0].name);

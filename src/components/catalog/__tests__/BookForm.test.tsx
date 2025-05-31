@@ -54,7 +54,6 @@ describe('BookForm', () => {
     expect(screen.getByLabelText(/Título/i)).toHaveValue(initialData.title);
     expect(screen.getByLabelText(/Autor/i)).toHaveValue(initialData.author);
     expect(screen.getByLabelText(/ISBN/i)).toHaveValue(initialData.isbn);
-    // Para o Select, verificamos o texto visível no trigger quando um valor é selecionado
     expect(screen.getByRole('combobox', { name: /Gênero/i })).toHaveTextContent(initialData.genre);
     expect(screen.getByLabelText(/Ano de Publicação/i)).toHaveValue(initialData.publicationYear);
     expect(screen.getByLabelText(/URL da Imagem da Capa/i)).toHaveValue(initialData.coverImageUrl);
@@ -69,10 +68,9 @@ describe('BookForm', () => {
     fireEvent.change(screen.getByLabelText(/Ano de Publicação/i), { target: { value: '2023' } });
     
     const genreTrigger = screen.getByRole('combobox', { name: /Gênero/i });
-    fireEvent.click(genreTrigger); // Abre o dropdown (usar click é mais genérico)
+    fireEvent.click(genreTrigger); 
 
     const genreToSelect = BOOK_GENRES[1]; // "Fantasia"
-    // Espera que a opção apareça e então clica nela
     const optionElement = await screen.findByRole('option', { name: genreToSelect, hidden: false });
     fireEvent.click(optionElement);
 
@@ -85,7 +83,7 @@ describe('BookForm', () => {
         author: 'Novo Autor Criativo',
         isbn: '9876543210',
         genre: genreToSelect,
-        publicationYear: 2023, // Zod coerce para número
+        publicationYear: 2023, 
         coverImageUrl: '', 
       });
     });
@@ -96,7 +94,7 @@ describe('BookForm', () => {
       id: '1',
       title: 'Livro Original',
       author: 'Autor Original',
-      isbn: '1112223334445', // 13 chars
+      isbn: '1112223334445', 
       genre: BOOK_GENRES[0],
       publicationYear: 2020,
       status: 'Disponível',
@@ -117,7 +115,7 @@ describe('BookForm', () => {
         author: initialData.author, 
         isbn: initialData.isbn, 
         genre: initialData.genre, 
-        publicationYear: 2021, // Zod coerce para número
+        publicationYear: 2021, 
         coverImageUrl: initialData.coverImageUrl, 
       });
     });
@@ -137,7 +135,6 @@ describe('BookForm', () => {
     expect(await screen.findByText('Título é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('Autor é obrigatório.')).toBeInTheDocument();
     expect(await screen.findByText('ISBN deve ter pelo menos 10 caracteres.')).toBeInTheDocument();
-    // O erro de Gênero aparecerá se não for selecionado
     expect(await screen.findByText('Gênero é obrigatório.')).toBeInTheDocument(); 
     
     expect(mockOnSubmit).not.toHaveBeenCalled();
