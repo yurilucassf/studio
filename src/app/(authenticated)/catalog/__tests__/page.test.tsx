@@ -4,63 +4,68 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '@testing-library/jest-dom';
 import CatalogPage from '../page'; // Adjust path as necessary
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/firebase'; // We'll mock its methods
+// We import db here, but its properties will be effectively ignored because
+// 'firebase/firestore' functions are mocked to not rely on db's internal methods.
+import { db } from '@/lib/firebase';
 import type { Book, Client } from '@/lib/types';
+// BOOK_GENRES is fine to import here as it's used for mock data generation, not in jest.mock factory
 import { BOOK_GENRES } from '@/lib/constants';
 
-// Mock Firebase Firestore
-jest.mock('@/lib/firebase', () => ({
-  db: {
-    collection: jest.fn(),
-    doc: jest.fn(),
-    Timestamp: {
-      now: jest.fn(() => ({ toMillis: () => Date.now() })),
-      fromMillis: jest.fn(ms => ({ toMillis: () => ms })),
-    },
-    // Add writeBatch mock here
-    writeBatch: jest.fn(() => ({
-      delete: jest.fn(),
-      commit: jest.fn(() => Promise.resolve()),
-    })),
-  },
-  // Keep auth if needed by other parts, or mock it as well
-  auth: jest.fn(),
-}));
+// --- Start of New Mocking Strategy ---
 
+// Define mocks for all Firestore SDK functions used in CatalogPage.tsx
 const mockGetDocs = jest.fn();
 const mockAddDoc = jest.fn();
 const mockUpdateDoc = jest.fn();
 const mockDeleteDoc = jest.fn();
 const mockGetDoc = jest.fn();
-const mockWriteBatchInstance = {
-  delete: jest.fn(),
-  commit: jest.fn(() => Promise.resolve()),
-};
+const mockCollection = jest.fn();
+const mockOrderBy = jest.fn();
+const mockWhere = jest.fn();
+const mockQuery = jest.fn();
+const mockLimit = jest.fn();
+const mockDoc = jest.fn();
 
-(db.collection as jest.Mock).mockImplementation((path: string) => {
-  if (path === 'loanActivities' && (mockGetDocs as jest.Mock).getMockName() === 'getDocsForLoanActivities') {
-     return { getDocs: mockGetDocs, addDoc: mockAddDoc };
-  }
-  if (path === 'loanActivities') {
-    return { addDoc: mockAddDoc }; // Simplified for loan activities when not specifically querying them
-  }
-  return {
-    getDocs: mockGetDocs,
-    addDoc: mockAddDoc,
-    orderBy: jest.fn().mockReturnThis(), // Allows chaining like query(collection(...), orderBy(...))
-    where: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-  };
-});
-
-(db.doc as jest.Mock).mockImplementation(() => ({
-  update: mockUpdateDoc,
-  delete: mockDeleteDoc,
-  get: mockGetDoc,
+const mockBatchDelete = jest.fn();
+const mockBatchCommit = jest.fn(() => Promise.resolve());
+const mockWriteBatch = jest.fn(() => ({
+  delete: mockBatchDelete,
+  commit: mockBatchCommit,
 }));
 
-// Ensure db.writeBatch returns the mock instance
-(db.writeBatch as jest.Mock).mockReturnValue(mockWriteBatchInstance);
+// Mock the 'firebase/firestore' module
+jest.mock('firebase/firestore', () => ({
+  collection: mockCollection,
+  doc: mockDoc,
+  Timestamp: { // Timestamp is a named export from 'firebase/firestore'
+    now: jest.fn(() => ({ 
+      toDate: () => new Date(),
+      toMillis: () => Date.now() 
+    })),
+    fromMillis: jest.fn(ms => ({ 
+      toDate: () => new Date(ms),
+      toMillis: () => ms 
+    })),
+  },
+  writeBatch: mockWriteBatch,
+  getDocs: mockGetDocs,
+  addDoc: mockAddDoc,
+  updateDoc: mockUpdateDoc,
+  deleteDoc: mockDeleteDoc,
+  getDoc: mockGetDoc,
+  query: mockQuery,
+  orderBy: mockOrderBy,
+  where: mockWhere,
+  limit: mockLimit,
+}));
+
+// Mock '@/lib/firebase' to provide a placeholder 'db' and 'auth'
+jest.mock('@/lib/firebase', () => ({
+  db: { app: {} }, // Placeholder db instance
+  auth: jest.fn(),
+}));
+
+// --- End of New Mocking Strategy ---
 
 
 // Mock useToast
@@ -83,6 +88,7 @@ jest.mock('@/components/catalog/book-card', () => ({
 
 jest.mock('@/components/catalog/book-form', () => ({
   BookForm: jest.fn(({ onSubmit, onCancel, initialData }) => (
+    // Using a hardcoded genre string to avoid out-of-scope variable access for BOOK_GENRES
     <form data-testid="book-form" onSubmit={(e) => { e.preventDefault(); onSubmit(initialData || { title: 'New Test Book', author: 'Test Author', isbn: '1234567890', genre: 'Ficção Científica', publicationYear: 2024, coverImageUrl: '' }); }}>
       <button type="submit">Save Book Form</button>
       <button type="button" onClick={onCancel}>Cancel Book Form</button>
@@ -106,19 +112,41 @@ const mockClients: Client[] = [{ id: 'client1', name: 'Client X', email: 'client
 
 describe('CatalogPage', () => {
   beforeEach(() => {
-    // Reset all mock implementations and call counts
+    // Reset all specific Firestore function mocks
     mockGetDocs.mockReset();
     mockAddDoc.mockReset().mockResolvedValue({ id: 'new-doc-id' });
     mockUpdateDoc.mockReset().mockResolvedValue(undefined);
     mockDeleteDoc.mockReset().mockResolvedValue(undefined);
     mockGetDoc.mockReset();
-    (db.collection as jest.Mock).mockClear();
-    (db.doc as jest.Mock).mockClear();
-    (db.writeBatch as jest.Mock).mockClear(); // Clear writeBatch mock
-    mockWriteBatchInstance.delete.mockClear(); // Clear calls on the instance
-    mockWriteBatchInstance.commit.mockClear(); // Clear calls on the instance
-     mockToast.mockClear();
-     (global.confirm as jest.Mock).mockReturnValue(true); // Default to "yes" for confirm dialogs
+    mockCollection.mockReset();
+    mockDoc.mockReset();
+    mockQuery.mockReset();
+    mockOrderBy.mockReset();
+    mockWhere.mockReset();
+    mockLimit.mockReset();
+    mockWriteBatch.mockReset();
+    mockBatchDelete.mockReset();
+    mockBatchCommit.mockReset().mockResolvedValue(undefined);
+    
+    // Configure default implementations for query-related functions to allow chaining
+    // The actual db instance is passed as the first argument by the SUT
+    mockQuery.mockImplementation((queryObj, ..._constraints) => queryObj); // query(collection(...), where(...))
+    mockOrderBy.mockImplementation((_field, _direction) => ({ type: 'orderBy' })); // Returns a constraint
+    mockWhere.mockImplementation((_field, _op, _value) => ({ type: 'where' })); // Returns a constraint
+    mockLimit.mockImplementation((_count) => ({ type: 'limit' })); // Returns a constraint
+
+    // Configure collection and doc to return identifiable objects for debugging or simple checks if needed
+    mockCollection.mockImplementation((_db, path) => ({ type: 'collectionRef', path }));
+    mockDoc.mockImplementation((_db, path, id) => ({ type: 'docRef', path, id }));
+
+    // Default mock for writeBatch
+    mockWriteBatch.mockReturnValue({
+        delete: mockBatchDelete,
+        commit: mockBatchCommit,
+    });
+
+    mockToast.mockClear();
+    (global.confirm as jest.Mock).mockReturnValue(true);
   });
 
   it('renders loading state initially then displays books', async () => {
@@ -133,7 +161,7 @@ describe('CatalogPage', () => {
       expect(screen.getByText('Book One')).toBeInTheDocument();
       expect(screen.getByText('Book Two')).toBeInTheDocument();
     });
-    expect(mockGetDocs).toHaveBeenCalledTimes(2); // Once for books, once for clients
+    expect(mockGetDocs).toHaveBeenCalledTimes(2); 
   });
 
   it('displays empty state if no books are found', async () => {
@@ -165,25 +193,25 @@ describe('CatalogPage', () => {
 
   it('adds a new book successfully', async () => {
     mockGetDocs
-      .mockResolvedValueOnce({ docs: [] }) // Initial load: no books
-      .mockResolvedValueOnce({ docs: [] }) // Initial load: no clients
-      .mockResolvedValueOnce({ docs: [{ id: 'new-book-id', data: () => ({ title: 'New Test Book', author: 'Test Author', isbn: '1234567890', genre: 'Ficção Científica', publicationYear: 2024, status: 'Disponível', addedDate: { toMillis: () => Date.now() }}) }] }) // After add: new book
-      .mockResolvedValueOnce({ docs: [] }); // After add: clients (no change)
+      .mockResolvedValueOnce({ docs: [] }) 
+      .mockResolvedValueOnce({ docs: [] }) 
+      .mockResolvedValueOnce({ docs: [{ id: 'new-book-id', data: () => ({ title: 'New Test Book', author: 'Test Author', isbn: '1234567890', genre: 'Ficção Científica', publicationYear: 2024, status: 'Disponível', addedDate: { toMillis: () => Date.now() }}) }] }) 
+      .mockResolvedValueOnce({ docs: [] }); 
 
 
     render(<CatalogPage />);
-    await screen.findByText(/Nenhum livro encontrado/i); // Ensure initial load is done
+    await screen.findByText(/Nenhum livro encontrado/i); 
 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Livro/i }));
     await screen.findByTestId('book-form');
     
-    // Simulate form submission (BookForm mock calls onSubmit directly)
     fireEvent.submit(screen.getByTestId('book-form'));
 
     await waitFor(() => {
       expect(mockAddDoc).toHaveBeenCalledTimes(1);
-      expect(mockAddDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-        title: 'New Test Book', // From BookForm mock
+      // db is passed as the first arg to collection(), which is then passed to addDoc()
+      expect(mockAddDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'collectionRef', path: 'books' }), expect.objectContaining({
+        title: 'New Test Book',
         author: 'Test Author',
         publicationYear: 2024,
         status: 'Disponível',
@@ -202,29 +230,17 @@ describe('CatalogPage', () => {
     render(<CatalogPage />);
     await screen.findByText(editableBook.title);
 
-    // In BookCard mock, the edit button directly calls onEdit with the book
-    // So we need to find the button inside the mocked BookCard and click it
     const bookCard = screen.getByTestId(`book-card-${editableBook.id}`);
-    fireEvent.click(within(bookCard).getByRole('button', { name: 'Edit' })); // From BookCard mock
+    fireEvent.click(within(bookCard).getByRole('button', { name: 'Edit' })); 
 
-    await screen.findByTestId('book-form'); // Form should be open with initialData
-
-    // Simulate form submission (BookForm mock calls onSubmit with initialData if not changed, or new data)
-    // Let's assume BookForm mock will submit the `initialData` provided to it (which is `editableBook`)
-    // or a modified version if the mock was more complex.
-    // For this test, the mock `BookForm`'s submit will use its default "New Test Book" or initialData.
-    // To test edit properly, the BookForm mock's onSubmit should use `initialData` passed to it.
-    // Let's adjust the mock slightly for the test's sake (or make it more sophisticated)
-    // For now, we'll rely on the fact that `handleFormSubmit` in CatalogPage receives the data.
-
-    // We'll simulate submitting the form which will call `handleFormSubmit` with `editingBook` data
-    // The BookForm mock will pass its `initialData` when submitted.
+    await screen.findByTestId('book-form'); 
     fireEvent.submit(screen.getByTestId('book-form'));
 
     await waitFor(() => {
       expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
-      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-        title: editableBook.title, // From the data passed to BookForm's onSubmit
+      // db is passed as the first arg to doc(), which is then passed to updateDoc()
+      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'books', id: editableBook.id }), expect.objectContaining({
+        title: editableBook.title, 
         author: editableBook.author,
       }));
       expect(mockToast).toHaveBeenCalledWith({ title: 'Livro atualizado com sucesso!' });
@@ -232,16 +248,24 @@ describe('CatalogPage', () => {
   });
 
   it('deletes a book successfully', async () => {
-    // First getDocs for initial book load
-    mockGetDocs.mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) });
-    // Second getDocs for initial client load
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
-    // Third getDocs for querying loan activities for the book to be deleted
-    mockGetDocs.mockName('getDocsForLoanActivities').mockResolvedValueOnce({ docs: [] }); // No loan activities for this book
-    // Fourth getDocs for refreshing books list after deletion
+    mockGetDocs.mockName('getDocsForBooksInitial');
+    mockGetDocs
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) }) // Initial books
+      .mockResolvedValueOnce({ docs: [] }); // Initial clients
+    
+    // Mock for loan activities query associated with the book to be deleted
+    const mockGetDocsForLoanActivities = jest.fn().mockResolvedValue({ docs: [] });
+    mockGetDocs.mockImplementationOnce(queryArg => {
+        // This is a bit fragile, assumes the loan activities query is the third getDocs call in this test
+        // A more robust way would be to inspect queryArg if possible, or use mockName more effectively if jest supports it well for multiple calls with different purposes
+        return mockGetDocsForLoanActivities(queryArg);
+    });
+
+    // Mock for refreshing book list after deletion
     mockGetDocs.mockResolvedValueOnce({ docs: [mockBooks[1]].map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) });
-    // Fifth getDocs for refreshing clients list after deletion (no change expected)
+    // Mock for refreshing clients list (no change)
     mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
 
     render(<CatalogPage />);
     await screen.findByText(mockBooks[0].title);
@@ -251,9 +275,8 @@ describe('CatalogPage', () => {
     expect(global.confirm).toHaveBeenCalledWith('Tem certeza que deseja excluir este livro?');
     
     await waitFor(() => {
-      expect(mockWriteBatchInstance.delete).toHaveBeenCalledTimes(1); // bookRef
-      // Potentially 1 more if loan activities existed for mockBooks[0].id, current mock is 0
-      expect(mockWriteBatchInstance.commit).toHaveBeenCalledTimes(1);
+      expect(mockBatchDelete).toHaveBeenCalledTimes(1); 
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
       expect(mockToast).toHaveBeenCalledWith({ title: 'Livro e histórico de empréstimos excluídos com sucesso!' });
     });
     await waitFor(() => expect(screen.queryByText(mockBooks[0].title)).not.toBeInTheDocument());
@@ -264,21 +287,20 @@ describe('CatalogPage', () => {
     mockGetDocs
       .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
       .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
-    mockGetDoc.mockResolvedValue({ exists: () => true, data: () => mockClients[0] }); // For client lookup
+    mockGetDoc.mockResolvedValue({ exists: () => true, data: () => mockClients[0] }); 
 
     render(<CatalogPage />);
-    await screen.findByText(mockBooks[0].title); // Book One is 'Disponível'
+    await screen.findByText(mockBooks[0].title); 
 
-    // Simulate loan action from BookCard mock
     fireEvent.click(within(screen.getByTestId(`book-card-${mockBooks[0].id}`)).getByRole('button', { name: 'Loan' }));
     
     await waitFor(() => {
-        expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'docRef', path: 'books', id: mockBooks[0].id}), expect.objectContaining({
             status: 'Emprestado',
             borrowedByClientId: mockClients[0].id,
             borrowedByName: mockClients[0].name,
         }));
-        expect(mockAddDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ // For loanActivities
+        expect(mockAddDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'collectionRef', path: 'loanActivities'}), expect.objectContaining({ 
             bookId: mockBooks[0].id,
             clientId: mockClients[0].id,
             type: 'loan',
@@ -293,18 +315,17 @@ describe('CatalogPage', () => {
       .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
     render(<CatalogPage />);
-    await screen.findByText(mockBooks[1].title); // Book Two is 'Emprestado'
+    await screen.findByText(mockBooks[1].title); 
 
-    // Simulate return action from BookCard mock
     fireEvent.click(within(screen.getByTestId(`book-card-${mockBooks[1].id}`)).getByRole('button', { name: 'Return' }));
 
     await waitFor(() => {
-        expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'docRef', path: 'books', id: mockBooks[1].id}), expect.objectContaining({
             status: 'Disponível',
             borrowedByClientId: null,
             borrowedByName: null,
         }));
-        expect(mockAddDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ // For loanActivities
+        expect(mockAddDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'collectionRef', path: 'loanActivities'}), expect.objectContaining({ 
             bookId: mockBooks[1].id,
             clientId: mockBooks[1].borrowedByClientId, 
             type: 'return',
@@ -315,10 +336,8 @@ describe('CatalogPage', () => {
 
 });
 
-// Helper to access elements within a specific scope
 const within = (element: HTMLElement) => ({
   getByRole: (role: string, options?: any) => screen.getByRole(role, { ...options, container: element }),
-  getByText: (text: string | RegExp, options?: any) => screen.getByText(text, { ...options, container: element }), // Added RegExp support
-  // Add other queries as needed
+  getByText: (text: string | RegExp, options?: any) => screen.getByText(text, { ...options, container: element }), 
 });
 
