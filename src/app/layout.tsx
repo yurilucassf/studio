@@ -4,7 +4,7 @@ import { AuthProvider } from '@/components/auth/auth-provider';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
-  title: 'BookLook',
+  title: 'BiblioFlow',
   description: 'Sistema moderno de gerenciamento de biblioteca.',
 };
 

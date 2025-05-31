@@ -82,7 +82,7 @@ export function AppSidebar() {
             </Button>
             <BookHeart className="h-8 w-8 text-sidebar-primary group-data-[collapsible=icon]:h-7 group-data-[collapsible=icon]:w-7" />
             <h1 className="text-2xl font-headline font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-              BookLook
+              BiblioFlow
             </h1>
         </div>
       </SidebarHeader>
@@ -118,7 +118,7 @@ export function AppSidebar() {
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
           <Avatar className="h-10 w-10 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
             <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.name || currentUser?.email || 'User'} />
-            <AvatarFallback>{getInitials(currentUser?.name || currentUser?.email)}</AvatarFallback>
+            <AvatarFallback>{getInitials(currentUser?.name ?? currentUser?.email ?? undefined)}</AvatarFallback>
           </Avatar>
           <div className="group-data-[collapsible=icon]:hidden">
             <p className="text-sm font-medium text-sidebar-foreground truncate max-w-[120px]">{currentUser?.name || currentUser?.email}</p>

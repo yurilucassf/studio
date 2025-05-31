@@ -114,11 +114,7 @@ export function LoginForm() {
             Entrar
           </Button>
         </form>
-        <div className="mt-6 p-4 bg-secondary/50 rounded-md border border-border text-sm text-muted-foreground">
-          <p className="font-medium">Credenciais de Demonstração:</p>
-          <p>Email: <code className="font-code">user@example.com</code></p>
-          <p>Senha: <code className="font-code">password</code></p>
-        </div>
+        
       </CardContent>
     </Card>
   );

@@ -7,9 +7,9 @@ export default function LoginPage() {
       <div className="mb-8 flex flex-col items-center text-center">
         <BookHeart className="h-16 w-16 text-primary mb-4" />
         <h1 className="text-4xl font-headline font-bold text-foreground">
-          BookLook
+          BiblioFlow
         </h1>
-        <p className="text-muted-foreground">Seu sistema de gerenciamento de biblioteca.</p>
+        <p className="text-muted-foreground">Sistema de gerenciamento de biblioteca.</p>
       </div>
       <LoginForm />
     </main>
