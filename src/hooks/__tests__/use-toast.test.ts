@@ -1,13 +1,23 @@
-
 import { act, renderHook } from '@testing-library/react';
-import { useToast, toast as globalToast, reducer, Action, ActionType, State, genId as actualGenId } from '../use-toast'; // Importar reducer e tipos
+// Importar os itens necessários do módulo original, incluindo os exportados para teste
+import {
+  useToast,
+  toast as globalToast,
+  reducer,
+  type Action,
+  type State,
+  originalDispatch, // Importar o dispatch original
+  memoryStateRef,   // Importar a referência ao estado
+} from '../use-toast'; // Ajustado para '../use-toast' se estiver na mesma pasta __tests__
 
 // Mock para genId para ter IDs previsíveis nos testes
 let mockToastIdCounter = 0;
+
+// Mockear apenas a função genId do módulo
 jest.mock('../use-toast', () => {
   const originalModule = jest.requireActual('../use-toast');
   return {
-    ...originalModule,
+    ...originalModule, // Mantém todas as outras exportações originais
     genId: () => `test-toast-id-${mockToastIdCounter++}`,
   };
 });
@@ -15,18 +25,22 @@ jest.mock('../use-toast', () => {
 
 describe('useToast Hook and toast function', () => {
   beforeEach(() => {
-    // Resetar o estado do hook e o contador de ID antes de cada teste
-    mockToastIdCounter = 0;
+    mockToastIdCounter = 0; // Resetar o contador para cada teste
     act(() => {
-      // Limpa os toasts diretamente no memoryState, que é o que o hook lê
-      const { toasts } = useToast.getState();
-      toasts.forEach(t => useToast.getState().dismiss(t.id));
-       // Dispara REMOVE_TOAST para todos para garantir que a fila seja limpa.
-      originalModule.dispatch({ type: 'REMOVE_TOAST' });
+      // Reseta o estado do 'memoryStateRef.current' diretamente antes de cada teste
+      if (memoryStateRef && memoryStateRef.current) {
+        memoryStateRef.current.toasts = [];
+      }
+      // Dispara REMOVE_TOAST para limpar completamente e notificar listeners (se houver)
+      // Certifique-se de que originalDispatch está disponível e é o dispatch do módulo real
+      const { originalDispatch: actualDispatch } = jest.requireActual('../use-toast');
+      actualDispatch({ type: 'REMOVE_TOAST' });
     });
-     // Garante que o memoryState esteja limpo
-     const { result: stateResult } = renderHook(() => useToast());
-     expect(stateResult.current.toasts).toEqual([]);
+
+    // Verifica se o estado está limpo no início de cada teste usando o hook
+    // É importante que o renderHook use a versão não mockada (ou parcialmente mockada) de useToast
+    const { result } = renderHook(() => useToast());
+    expect(result.current.toasts).toEqual([]);
   });
 
   it('useToast deve retornar um array de toasts vazio inicialmente', () => {
@@ -38,26 +52,26 @@ describe('useToast Hook and toast function', () => {
     act(() => {
       globalToast({ title: 'Test Toast 1' });
     });
-    
+
     const { result } = renderHook(() => useToast());
     expect(result.current.toasts).toHaveLength(1);
     expect(result.current.toasts[0]).toMatchObject({
-      id: 'test-toast-id-0',
+      id: 'test-toast-id-0', // Primeiro ID gerado pelo mock
       title: 'Test Toast 1',
       open: true,
     });
   });
 
   it('função toast() deve respeitar TOAST_LIMIT', () => {
-     act(() => {
+    act(() => {
       globalToast({ title: 'Toast 1' });
-      globalToast({ title: 'Toast 2' }); // TOAST_LIMIT é 1, então este deve substituir o anterior
+      // Supondo TOAST_LIMIT = 1, este substituirá o anterior.
+      globalToast({ title: 'Toast 2' });
     });
     const { result } = renderHook(() => useToast());
     expect(result.current.toasts).toHaveLength(1);
-    expect(result.current.toasts[0].title).toBe('Toast 2'); // O último adicionado deve ser o visível
+    expect(result.current.toasts[0].title).toBe('Toast 2');
   });
-
 
   it('dismiss() deve marcar o toast como não aberto e agendar para remoção', () => {
     let toastId: string | undefined;
@@ -67,37 +81,41 @@ describe('useToast Hook and toast function', () => {
     });
 
     const { result: stateBeforeDismiss } = renderHook(() => useToast());
-    expect(stateBeforeDismiss.current.toasts[0].open).toBe(true);
-    
+    expect(stateBeforeDismiss.current.toasts.find(t => t.id === toastId)?.open).toBe(true);
+
     act(() => {
       if (toastId) {
         stateBeforeDismiss.current.dismiss(toastId);
       }
     });
-    
+
     const { result: stateAfterDismiss } = renderHook(() => useToast());
-    expect(stateAfterDismiss.current.toasts[0].open).toBe(false);
-    // A remoção real é atrasada, então o toast ainda está na lista mas com open: false
+    expect(stateAfterDismiss.current.toasts.find(t => t.id === toastId)?.open).toBe(false);
+    // A remoção real é atrasada, o toast ainda está na lista mas com open: false
   });
 
-  it('onOpenChange(false) deve chamar dismiss', () => {
-    const { result: initialResult } = renderHook(() => useToast());
-    const dismissSpy = jest.spyOn(initialResult.current, 'dismiss');
-    
+  it('onOpenChange(false) deve chamar dismiss e fechar o toast', () => {
+    let toastToChangeId: string = '';
     act(() => {
-      globalToast({ title: 'Toast com onOpenChange' });
+      const { id } = globalToast({ title: 'Toast com onOpenChange' });
+      toastToChangeId = id;
     });
 
     const { result: updatedResult } = renderHook(() => useToast());
-    const toastToChange = updatedResult.current.toasts[0];
+    const toastToChange = updatedResult.current.toasts.find(t => t.id === toastToChangeId);
+
+    expect(toastToChange).toBeDefined();
+    expect(toastToChange?.open).toBe(true);
 
     act(() => {
-      if (toastToChange.onOpenChange) {
-        toastToChange.onOpenChange(false);
+      if (toastToChange && toastToChange.onOpenChange) {
+        toastToChange.onOpenChange(false); // Isso deve acionar o dismiss interno
       }
     });
-    expect(dismissSpy).toHaveBeenCalledWith(toastToChange.id);
-    dismissSpy.mockRestore();
+
+    const { result: finalResult } = renderHook(() => useToast());
+    const changedToast = finalResult.current.toasts.find(t => t.id === toastToChangeId);
+    expect(changedToast?.open).toBe(false); // Verifica o efeito do dismiss
   });
 
   describe('toast reducer', () => {
@@ -105,11 +123,14 @@ describe('useToast Hook and toast function', () => {
 
     beforeEach(() => {
       initialState = { toasts: [] };
-      mockToastIdCounter = 0; // Resetar para IDs previsíveis
+      // Resetar mockToastIdCounter para o reducer também, se genId for usado diretamente lá
+      // (normalmente não é, id é passado na action)
+      mockToastIdCounter = 0;
     });
 
     it('ADD_TOAST deve adicionar um toast', () => {
-      const toastToAdd = { id: 'test-toast-id-0', title: 'Novo', open: true, onOpenChange: jest.fn() };
+      // Usar o ID gerado pelo mock para consistência se o reducer não gerar IDs
+      const toastToAdd = { id: `test-toast-id-${mockToastIdCounter++}`, title: 'Novo', open: true, onOpenChange: jest.fn() };
       const action: Action = { type: 'ADD_TOAST', toast: toastToAdd };
       const newState = reducer(initialState, action);
       expect(newState.toasts).toHaveLength(1);
@@ -117,29 +138,32 @@ describe('useToast Hook and toast function', () => {
     });
 
     it('UPDATE_TOAST deve atualizar um toast existente', () => {
-      const toast1 = { id: 'test-toast-id-0', title: 'Original', open: true, onOpenChange: jest.fn() };
+      const toastId = `test-toast-id-${mockToastIdCounter++}`;
+      const toast1 = { id: toastId, title: 'Original', open: true, onOpenChange: jest.fn() };
       initialState = { toasts: [toast1] };
       const updates: Partial<typeof toast1> = { title: 'Atualizado', description: 'Desc' };
-      const action: Action = { type: 'UPDATE_TOAST', toast: { ...updates, id: 'test-toast-id-0' } };
+      const action: Action = { type: 'UPDATE_TOAST', toast: { ...updates, id: toastId } };
       const newState = reducer(initialState, action);
       expect(newState.toasts[0].title).toBe('Atualizado');
       expect(newState.toasts[0].description).toBe('Desc');
     });
 
     it('REMOVE_TOAST deve remover um toast específico', () => {
-      const toast1 = { id: 'test-toast-id-0', title: 'T1', open: true, onOpenChange: jest.fn() };
-      const toast2 = { id: 'test-toast-id-1', title: 'T2', open: true, onOpenChange: jest.fn() };
+      const toastId1 = `test-toast-id-${mockToastIdCounter++}`;
+      const toastId2 = `test-toast-id-${mockToastIdCounter++}`;
+      const toast1 = { id: toastId1, title: 'T1', open: true, onOpenChange: jest.fn() };
+      const toast2 = { id: toastId2, title: 'T2', open: true, onOpenChange: jest.fn() };
       initialState = { toasts: [toast1, toast2] };
-      const action: Action = { type: 'REMOVE_TOAST', toastId: 'test-toast-id-0' };
+      const action: Action = { type: 'REMOVE_TOAST', toastId: toastId1 };
       const newState = reducer(initialState, action);
       expect(newState.toasts).toHaveLength(1);
-      expect(newState.toasts[0].id).toBe('test-toast-id-1');
+      expect(newState.toasts[0].id).toBe(toastId2);
     });
-    
+
     it('REMOVE_TOAST sem toastId deve limpar todos os toasts', () => {
-      const toast1 = { id: 'test-toast-id-0', title: 'T1', open: true, onOpenChange: jest.fn() };
+      const toast1 = { id: `test-toast-id-${mockToastIdCounter++}`, title: 'T1', open: true, onOpenChange: jest.fn() };
       initialState = { toasts: [toast1] };
-      const action: Action = { type: 'REMOVE_TOAST' };
+      const action: Action = { type: 'REMOVE_TOAST' }; // Sem toastId
       const newState = reducer(initialState, action);
       expect(newState.toasts).toHaveLength(0);
     });
