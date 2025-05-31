@@ -9,7 +9,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
@@ -68,6 +70,7 @@
     "@types/react-dom": "^18",
     "babel-jest": "^30.0.0-beta.3",
     "genkit-cli": "^1.8.0",
+    "identity-obj-proxy": "^3.0.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^30.0.0-beta.3",
     "postcss": "^8",
