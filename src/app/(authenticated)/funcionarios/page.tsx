@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -213,11 +214,9 @@ export default function FuncionariosPage() {
           <h3 className="text-xl font-semibold text-foreground">Nenhum funcionário encontrado</h3>
           <p className="text-muted-foreground">
              {searchTerm ? "Tente um termo de busca diferente ou " : "Ainda não há funcionários cadastrados. "}
-             <DialogTrigger asChild>
-              <Button variant="link" className="p-0 h-auto" onClick={() => { setEditingEmployee(null); setIsFormOpen(true);}}>
-                adicione um novo funcionário
-              </Button>
-            </DialogTrigger>
+            <Button variant="link" className="p-0 h-auto" onClick={() => { setEditingEmployee(null); setIsFormOpen(true);}}>
+              adicione um novo funcionário
+            </Button>
             .
           </p>
         </div>

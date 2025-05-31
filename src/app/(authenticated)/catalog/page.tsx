@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -237,11 +238,9 @@ export default function CatalogPage() {
           <h3 className="text-xl font-semibold text-foreground">Nenhum livro encontrado</h3>
           <p className="text-muted-foreground">
             {filters.searchTerm || filters.genre || filters.status ? "Tente ajustar seus filtros ou " : "Parece que não há livros no catálogo ainda. "}
-            <DialogTrigger asChild>
-              <Button variant="link" className="p-0 h-auto" onClick={() => { setEditingBook(null); setIsFormOpen(true);}}>
-                adicione um novo livro
-              </Button>
-            </DialogTrigger>
+            <Button variant="link" className="p-0 h-auto" onClick={() => { setEditingBook(null); setIsFormOpen(true);}}>
+              adicione um novo livro
+            </Button>
             .
           </p>
         </div>

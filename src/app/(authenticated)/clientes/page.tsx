@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -130,11 +131,9 @@ export default function ClientesPage() {
           <h3 className="text-xl font-semibold text-foreground">Nenhum cliente encontrado</h3>
           <p className="text-muted-foreground">
             {searchTerm ? "Tente um termo de busca diferente ou " : "Ainda não há clientes cadastrados. "}
-             <DialogTrigger asChild>
-              <Button variant="link" className="p-0 h-auto" onClick={() => { setEditingClient(null); setIsFormOpen(true);}}>
-                adicione um novo cliente
-              </Button>
-            </DialogTrigger>
+            <Button variant="link" className="p-0 h-auto" onClick={() => { setEditingClient(null); setIsFormOpen(true);}}>
+              adicione um novo cliente
+            </Button>
             .
           </p>
         </div>
