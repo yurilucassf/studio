@@ -1,0 +1,26 @@
+export const BOOK_GENRES = [
+  "Ficção Científica",
+  "Fantasia",
+  "Romance",
+  "Suspense",
+  "Mistério",
+  "Terror",
+  "Aventura",
+  "Histórico",
+  "Biografia",
+  "Autobiografia",
+  "Autoajuda",
+  "Negócios",
+  "Tecnologia",
+  "Ciência",
+  "Filosofia",
+  "Poesia",
+  "Drama",
+  "Infantojuvenil",
+  "Clássicos",
+  "Contos",
+  "Não-Ficção",
+  "Outro",
+];
+
+export const BOOK_STATUS_OPTIONS = ["Todos", "Disponível", "Emprestado"];
