@@ -38,6 +38,7 @@ jest.mock('@/hooks/use-toast', () => ({
 // Se você precisar mockar propriedades específicas da window, como matchMedia para o hook useIsMobile:
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
+  configurable: true, // Adicionado para permitir redefinição nos testes
   value: jest.fn().mockImplementation(query => ({
     matches: false,
     media: query,
