@@ -38,7 +38,7 @@ import {
 
 
 jest.mock('@/lib/firebase', () => ({
-  db: { app: {} }, 
+  db: { app: {} },
 }));
 
 
@@ -52,7 +52,12 @@ jest.mock('@/components/clientes/client-card', () => ({
     <div data-testid={`client-card-${client.id}`}>
       <h4>{client.name}</h4>
       <button data-testid={`client-card-${client.id}-edit-button`} onClick={() => onEdit(client)}>Editar</button>
-      <button data-testid={`client-card-${client.id}-delete-button`} onClick={() => onDelete(client.id)}>Excluir</button>
+      {/* Simular o AlertDialogTrigger para os testes de exclusão */}
+      <button data-testid={`client-card-${client.id}-delete-button`} onClick={() => {
+        if (global.confirm('Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.')) {
+          onDelete(client.id);
+        }
+      }}>Excluir</button>
     </div>
   )),
 }));
@@ -60,14 +65,14 @@ jest.mock('@/components/clientes/client-card', () => ({
 const mockClientFormData = { name: 'Cliente Mockado Editado', email: 'editado@example.com', phone: '000000000' };
 jest.mock('@/components/clientes/client-form', () => ({
   ClientForm: jest.fn(({ onSubmit, onCancel, initialData }) => (
-    <form data-testid="client-form" onSubmit={(e) => { 
-        e.preventDefault(); 
+    <form data-testid="client-form" onSubmit={(e) => {
+        e.preventDefault();
         // Se initialData existe, significa que estamos editando, então submetemos os dados de edição mockados.
         // Se não, estamos adicionando, então submetemos os dados de adição mockados.
-        const dataToSubmit = initialData 
+        const dataToSubmit = initialData
           ? mockClientFormData // Dados para simular edição
           : { name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }; // Dados para simular adição
-        onSubmit(dataToSubmit); 
+        onSubmit(dataToSubmit);
     }}>
       <button type="submit">Salvar Cliente (Form Mock)</button>
       <button type="button" onClick={onCancel}>Cancelar (Form Mock)</button>
@@ -89,7 +94,7 @@ describe('PaginaDeClientes', () => {
     (collection as jest.Mock).mockReset().mockImplementation((_db, path) => ({ type: 'collectionRef', path }));
     (doc as jest.Mock).mockReset().mockImplementation((_db, path, id) => ({ type: 'docRef', path, id }));
     mockToast.mockClear();
-    (global.confirm as jest.Mock).mockReturnValue(true);
+    (global.confirm as jest.Mock).mockReturnValue(true); // Mock default para true
   });
 
   it('renderiza estado de carregamento e depois exibe clientes', async () => {
@@ -114,7 +119,7 @@ describe('PaginaDeClientes', () => {
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
     render(<ClientesPage />);
     await waitFor(() => expect(screen.queryByTestId('client-form')).not.toBeInTheDocument());
-    
+
     const addButton = screen.getByRole('button', { name: /Adicionar Novo Cliente/i });
     fireEvent.click(addButton);
 
@@ -125,15 +130,15 @@ describe('PaginaDeClientes', () => {
 
   it('adiciona um novo cliente com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] }); 
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-cliente-id', data: () => ({ name: 'Novo Cliente de Teste', email: 'novo_cliente@example.com', phone: '123456789' }) }] });
 
     render(<ClientesPage />);
     await screen.findByText(/Nenhum cliente encontrado/i);
 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Cliente/i }));
     await screen.findByTestId('client-form');
-    
+
     fireEvent.submit(screen.getByTestId('client-form'));
 
     await waitFor(() => {
@@ -151,21 +156,21 @@ describe('PaginaDeClientes', () => {
   it('edita um cliente existente com sucesso', async () => {
     const editableClient = mockClients[0];
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] }) 
+      .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => editableClient }] })
       .mockResolvedValueOnce({ docs: [{ id: editableClient.id, data: () => mockClientFormData }] }); // Após Editar
-      
+
     render(<ClientesPage />);
     await screen.findByText(editableClient.name);
 
     fireEvent.click(screen.getByTestId(`client-card-${editableClient.id}-edit-button`));
 
-    await screen.findByTestId('client-form'); 
-    fireEvent.submit(screen.getByTestId('client-form')); 
+    await screen.findByTestId('client-form');
+    fireEvent.submit(screen.getByTestId('client-form'));
 
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
       expect(updateDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'docRef', path: 'clients', id: editableClient.id }), 
+        expect.objectContaining({ type: 'docRef', path: 'clients', id: editableClient.id }),
         expect.objectContaining(mockClientFormData) // Verifica se foi chamado com os dados mockados para edição
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Cliente atualizado com sucesso!' });
@@ -175,16 +180,16 @@ describe('PaginaDeClientes', () => {
 
   it('exclui um cliente com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) 
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) })
       .mockResolvedValueOnce({ docs: [mockClients[1]].map(c => ({ id: c.id, data: () => c })) });
 
     render(<ClientesPage />);
     await screen.findByText(mockClients[0].name);
-    
+
     fireEvent.click(screen.getByTestId(`client-card-${mockClients[0].id}-delete-button`));
 
     expect(global.confirm).toHaveBeenCalledWith('Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.');
-    
+
     await waitFor(() => {
       expect(deleteDoc).toHaveBeenCalledTimes(1);
       expect(deleteDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'clients', id: mockClients[0].id }));
@@ -213,4 +218,59 @@ describe('PaginaDeClientes', () => {
       expect(screen.getByText('Roberto Souza')).toBeInTheDocument();
     });
   });
+
+  // Testes de tratamento de erro
+  it('lida com erro ao buscar clientes', async () => {
+    (getDocs as jest.Mock).mockRejectedValueOnce(new Error('Falha ao buscar'));
+    render(<ClientesPage />);
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao buscar clientes", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao adicionar cliente', async () => {
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // fetch inicial
+    (addDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao adicionar'));
+
+    render(<ClientesPage />);
+    await screen.findByText(/Nenhum cliente encontrado/i);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Cliente/i }));
+    await screen.findByTestId('client-form');
+    fireEvent.submit(screen.getByTestId('client-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao salvar cliente", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao editar cliente', async () => {
+    const clientToEdit = mockClients[0];
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [{id: clientToEdit.id, data: () => clientToEdit}]});
+    (updateDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao atualizar'));
+
+    render(<ClientesPage />);
+    await screen.findByText(clientToEdit.name);
+    fireEvent.click(screen.getByTestId(`client-card-${clientToEdit.id}-edit-button`));
+    await screen.findByTestId('client-form');
+    fireEvent.submit(screen.getByTestId('client-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao salvar cliente", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao excluir cliente', async () => {
+    const clientToDelete = mockClients[0];
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
+    (deleteDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao excluir'));
+
+    render(<ClientesPage />);
+    await screen.findByText(clientToDelete.name);
+    fireEvent.click(screen.getByTestId(`client-card-${clientToDelete.id}-delete-button`));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao excluir cliente", variant: "destructive" });
+    });
+  });
 });
+
