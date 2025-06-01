@@ -10,16 +10,17 @@ describe('useIsMobile Hook', () => {
   const originalInnerWidth = window.innerWidth;
 
   beforeEach(() => {
-    // Restaura window.innerWidth para um valor padrão antes de cada teste
+    // Limpar mocks e redefinir valores antes de cada teste
     Object.defineProperty(window, 'innerWidth', {
       writable: true,
       configurable: true,
       value: 1024, // Padrão para desktop
     });
     // Define o estado 'matches' da instância mockada do MQL
+    // O hook usa mql.matches para o estado inicial.
     (mqlInstance as any).matches = window.innerWidth < 768;
     
-    // Limpa os mocks dos métodos da instância MQL para evitar interferência entre testes
+    // Limpa os mocks dos métodos da instância MQL
     if ((mqlInstance.addEventListener as jest.Mock).mockClear) {
         (mqlInstance.addEventListener as jest.Mock).mockClear();
     }
@@ -27,9 +28,11 @@ describe('useIsMobile Hook', () => {
         (mqlInstance.removeEventListener as jest.Mock).mockClear();
     }
     if ((mqlInstance.dispatchEvent as jest.Mock).mockClear) {
-      // Se dispatchEvent não for um jest.Mock, não precisa limpar,
-      // mas se for (como no setup aprimorado), limpe-o.
+        (mqlInstance.dispatchEvent as jest.Mock).mockClear();
     }
+    // Limpa o mock da factory window.matchMedia e garante que ele retorne nossa instância mockada
+    (window.matchMedia as jest.Mock).mockClear();
+    (window.matchMedia as jest.Mock).mockReturnValue(mqlInstance);
   });
 
   afterEach(() => {
@@ -43,7 +46,7 @@ describe('useIsMobile Hook', () => {
 
   it('deve retornar true se a largura da janela for menor que 768px (verificação inicial)', () => {
     Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 500 });
-    (mqlInstance as any).matches = true; // O hook usa window.innerWidth, mas é bom manter mql.matches consistente
+    (mqlInstance as any).matches = true; 
 
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(true);
@@ -64,29 +67,41 @@ describe('useIsMobile Hook', () => {
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(false);
 
+    // Captura o listener registrado pelo hook
+    // O useEffect do hook terá sido chamado, então addEventListener já foi invocado.
+    const eventListenerCallback = (mqlInstance.addEventListener as jest.Mock).mock.calls[0][1];
+
     // Simula mudança para mobile
     act(() => {
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 500 });
-      (mqlInstance as any).matches = true; // Importante: o listener do hook usará window.innerWidth, mas mql.matches deve refletir o estado para consistência do evento
+      // (mqlInstance as any).matches = true; // O callback do hook recalcula com window.innerWidth
       
-      // Dispara o evento 'change'. O mock de dispatchEvent em jest.setup.js chamará os listeners.
-      mqlInstance.dispatchEvent(new Event('change'));
+      // Chama o callback diretamente para simular o evento sendo processado pelo hook
+      if (typeof eventListenerCallback === 'function') {
+        eventListenerCallback({ matches: true }); // O argumento do evento pode não ser usado pelo hook, mas é bom passar
+      }
     });
     expect(result.current).toBe(true);
 
     // Simula mudança de volta para desktop
     act(() => {
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 800 });
-      (mqlInstance as any).matches = false;
-      mqlInstance.dispatchEvent(new Event('change'));
+      // (mqlInstance as any).matches = false;
+      if (typeof eventListenerCallback === 'function') {
+        eventListenerCallback({ matches: false });
+      }
     });
     expect(result.current).toBe(false);
   });
   
   it('deve limpar o event listener ao desmontar', () => {
     const { unmount } = renderHook(() => useIsMobile());
+    // O useEffect do hook é chamado na montagem, então addEventListener deve ter sido chamado.
     expect(mqlInstance.addEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+    expect(mqlInstance.addEventListener).toHaveBeenCalledTimes(1); // Garante que foi chamado apenas uma vez
+
     unmount();
     expect(mqlInstance.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+    expect(mqlInstance.removeEventListener).toHaveBeenCalledTimes(1);
   });
 });

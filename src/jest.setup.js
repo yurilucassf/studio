@@ -23,44 +23,32 @@ jest.mock('next/navigation', () => ({
   usePathname: jest.fn(() => '/mock-path'),
 }));
 
-// Mock useToast globalmente para evitar erros em componentes que o utilizam e não são o foco do teste.
-// Testes específicos para useToast devem usar jest.requireActual ou mocks mais detalhados.
 jest.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
     toast: jest.fn(),
   }),
-  // Adicionar o export 'toast' se ele for importado diretamente em algum lugar
   toast: jest.fn(),
 }));
 
-
-// Mock para window.matchMedia mais controlável para useIsMobile.test.tsx
+// Mock para window.matchMedia mais controlável
 const MOCK_MEDIA_QUERY_LIST_INSTANCE = {
-  matches: false, // Default value, can be changed by tests
+  matches: false, 
   media: '(max-width: 767px)',
   onchange: null,
-  addListener: jest.fn(), // deprecated
-  removeListener: jest.fn(), // deprecated
-  eventListeners: new Map<string, jest.MockedFunction<any>>(),
-  addEventListener(event: string, cb: any) {
-    this.eventListeners.set(event, cb);
-  },
-  removeEventListener(event: string) {
-    this.eventListeners.delete(event);
-  },
-  dispatchEvent(event: Event) {
-    if (this.eventListeners.has(event.type)) {
-      // Pass the MQL object itself (or an event object mimicking it) to the listener
-      this.eventListeners.get(event.type)?.({ matches: this.matches, media: this.media });
-      return true;
-    }
-    return false;
-  },
+  // Estes são os métodos que o hook useIsMobile efetivamente usa.
+  // Serão jest.fn() para que os testes possam espioná-los.
+  addEventListener: jest.fn(),
+  removeEventListener: jest.fn(),
+  // Estes são deprecated mas incluídos para um mock mais completo.
+  addListener: jest.fn(), 
+  removeListener: jest.fn(),
+  // dispatchEvent também é um jest.fn(). Os testes podem mockar sua implementação se necessário.
+  dispatchEvent: jest.fn((event) => event.type === 'change'), // Implementação simples padrão
 };
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  configurable: true, // Crucial para permitir que testes ajustem o mock se necessário (embora agora o objetivo seja não redefinir)
+  configurable: true, // Crucial para permitir que testes ajustem o mock se necessário
   value: jest.fn().mockReturnValue(MOCK_MEDIA_QUERY_LIST_INSTANCE),
 });
 
