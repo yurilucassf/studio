@@ -10,7 +10,12 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+   
     remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**', 
+      },
       {
         protocol: 'https',
         hostname: 'placehold.co',
@@ -32,6 +37,12 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'th.bing.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.wook.pt',
         port: '',
         pathname: '/**',
       },
