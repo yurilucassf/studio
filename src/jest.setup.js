@@ -8,14 +8,9 @@ beforeEach(() => {
 
 
 // Mock para window.HTMLElement.prototype.scrollIntoView
-// Esta função é frequentemente usada por bibliotecas de UI (como Radix) para rolar elementos para a visualização,
-// mas não é implementada no JSDOM, causando erros em testes.
 if (typeof window !== 'undefined') {
   window.HTMLElement.prototype.scrollIntoView = jest.fn();
 }
-
-
-// Você pode adicionar outros setups globais aqui, e.g., mocking global objects or functions
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -32,22 +27,29 @@ jest.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
     toast: jest.fn(),
   }),
+  toast: jest.fn(),
 }));
 
+// Mock para window.matchMedia mais controlável
+const MOCK_MEDIA_QUERY_LIST_INSTANCE = {
+  matches: false, 
+  media: '(max-width: 767px)',
+  onchange: null,
+  // Estes são os métodos que o hook useIsMobile efetivamente usa.
+  // Serão jest.fn() para que os testes possam espioná-los.
+  addEventListener: jest.fn(),
+  removeEventListener: jest.fn(),
+  // Estes são deprecated mas incluídos para um mock mais completo.
+  addListener: jest.fn(), 
+  removeListener: jest.fn(),
+  // dispatchEvent também é um jest.fn(). Os testes podem mockar sua implementação se necessário.
+  dispatchEvent: jest.fn((event) => event.type === 'change'), // Implementação simples padrão
+};
 
-// Se você precisar mockar propriedades específicas da window, como matchMedia para o hook useIsMobile:
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(), // deprecated
-    removeListener: jest.fn(), // deprecated
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
+  configurable: true, // Crucial para permitir que testes ajustem o mock se necessário
+  value: jest.fn().mockReturnValue(MOCK_MEDIA_QUERY_LIST_INSTANCE),
 });
 
-global.confirm = jest.fn(() => true); // Auto-confirma qualquer diálogo de confirmação
+global.confirm = jest.fn(() => true);

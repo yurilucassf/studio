@@ -9,13 +9,13 @@ import type { Book, Client } from '@/lib/types';
 
 // Funções auxiliares para mocks de Timestamp e WriteBatch
 // Estas são declaradas no escopo superior para serem acessíveis pela fábrica do mock e reatribuídas no beforeEach.
-let mockTimestampNowFn = jest.fn(() => ({ 
+let mockTimestampNowFn = jest.fn(() => ({
   toDate: () => new Date(),
-  toMillis: () => Date.now() 
+  toMillis: () => Date.now()
 }));
-let mockTimestampFromMillisFn = jest.fn(ms => ({ 
+let mockTimestampFromMillisFn = jest.fn(ms => ({
   toDate: () => new Date(ms),
-  toMillis: () => ms 
+  toMillis: () => ms
 }));
 
 // Estas serão as funções mock reais para delete e commit, inicializadas no beforeEach
@@ -26,48 +26,48 @@ let batchCommitMock: jest.Mock;
 jest.mock('firebase/firestore', () => {
   const originalFirestore = jest.requireActual('firebase/firestore');
   return {
-    ...originalFirestore, 
+    ...originalFirestore,
     collection: jest.fn(),
     doc: jest.fn(),
-    Timestamp: { 
-      now: () => mockTimestampNowFn(), 
+    Timestamp: {
+      now: () => mockTimestampNowFn(),
       fromMillis: (ms: number) => mockTimestampFromMillisFn(ms),
     },
     // writeBatch será um jest.fn() simples aqui. Sua implementação será definida no beforeEach.
-    writeBatch: jest.fn(), 
+    writeBatch: jest.fn(),
     getDocs: jest.fn(),
     addDoc: jest.fn(),
     updateDoc: jest.fn(),
     deleteDoc: jest.fn(),
     getDoc: jest.fn(),
-    query: jest.fn((queryObj, ..._constraints) => queryObj), 
-    orderBy: jest.fn(() => ({ type: 'orderBy' })), 
-    where: jest.fn(() => ({ type: 'where' })), 
-    limit: jest.fn(() => ({ type: 'limit' })), 
+    query: jest.fn((queryObj, ..._constraints) => queryObj),
+    orderBy: jest.fn(() => ({ type: 'orderBy' })),
+    where: jest.fn(() => ({ type: 'where' })),
+    limit: jest.fn(() => ({ type: 'limit' })),
   };
 });
 
 // Importar as funções mockadas DEPOIS do jest.mock
-import { 
-  collection, 
-  doc, 
-  Timestamp, 
+import {
+  collection,
+  doc,
+  Timestamp,
   writeBatch, // Este agora é o jest.fn() simples da fábrica
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDoc, 
-  query, 
-  orderBy, 
-  where, 
-  limit 
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  query,
+  orderBy,
+  where,
+  limit
 } from 'firebase/firestore';
 
 
 // Mock do módulo '@lib/firebase'
 jest.mock('@/lib/firebase', () => ({
-  db: { app: {} }, 
+  db: { app: {} },
   auth: jest.fn(),
 }));
 
@@ -76,10 +76,10 @@ const mockToast = jest.fn();
 (useToast as jest.Mock).mockReturnValue({ toast: mockToast });
 
 const mockEditedBookFormData = {
-  title: 'Novo Livro Mockado', 
+  title: 'Novo Livro Mockado',
   author: 'Autor Mockado Editado',
-  isbn: '0000000001', 
-  genre: BOOK_GENRES[2], 
+  isbn: '0000000001',
+  genre: BOOK_GENRES[2],
   publicationYear: 2025,
   coverImageUrl: 'http://example.com/edited.jpg',
 };
@@ -87,10 +87,10 @@ const mockEditedBookFormData = {
 const mockNewBookFormData = {
   title: 'Novo Livro Mockado Adicionado',
   author: 'Autor Mockado Adicionado',
-  isbn: '1112223334', 
-  genre: BOOK_GENRES[0], 
+  isbn: '1112223334',
+  genre: BOOK_GENRES[0],
   publicationYear: 2024,
-  coverImageUrl: '' 
+  coverImageUrl: ''
 };
 
 
@@ -108,10 +108,10 @@ jest.mock('@/components/catalog/book-card', () => ({
 
 jest.mock('@/components/catalog/book-form', () => ({
   BookForm: jest.fn(({ onSubmit, onCancel, initialData }) => (
-    <form data-testid="book-form" onSubmit={(e) => { 
-        e.preventDefault(); 
+    <form data-testid="book-form" onSubmit={(e) => {
+        e.preventDefault();
         const dataToSubmit = initialData ? mockEditedBookFormData : mockNewBookFormData;
-        onSubmit(dataToSubmit); 
+        onSubmit(dataToSubmit);
     }}>
       <button type="submit">Salvar Livro (Form Mock)</button>
       <button type="button" onClick={onCancel}>Cancelar (Form Mock)</button>
@@ -138,13 +138,13 @@ const mockClients: Client[] = [{ id: 'client1', name: 'Cliente X', email: 'clien
 describe('PaginaDeCatalogo', () => {
   beforeEach(() => {
     // Re-inicializa mocks de Timestamp
-    mockTimestampNowFn = jest.fn(() => ({ 
+    mockTimestampNowFn = jest.fn(() => ({
       toDate: () => new Date(),
-      toMillis: () => Date.now() 
+      toMillis: () => Date.now()
     }));
-    mockTimestampFromMillisFn = jest.fn(ms => ({ 
+    mockTimestampFromMillisFn = jest.fn(ms => ({
       toDate: () => new Date(ms),
-      toMillis: () => ms 
+      toMillis: () => ms
     }));
 
     // Inicializa os mocks para as operações de batch
@@ -156,7 +156,7 @@ describe('PaginaDeCatalogo', () => {
       delete: batchDeleteMock,
       commit: batchCommitMock,
     }));
-    
+
     // Reseta outros mocks do Firestore
     (getDocs as jest.Mock).mockReset();
     (addDoc as jest.Mock).mockReset().mockResolvedValue({ id: 'novo-livro-id' });
@@ -165,15 +165,15 @@ describe('PaginaDeCatalogo', () => {
     (getDoc as jest.Mock).mockReset();
     (collection as jest.Mock).mockReset().mockImplementation((_db, path) => ({ type: 'collectionRef', path }));
     (doc as jest.Mock).mockReset().mockImplementation((_db, path, id) => ({ type: 'docRef', path, id }));
-    
+
     mockToast.mockClear();
-    (global.confirm as jest.Mock).mockReturnValue(true); 
+    (global.confirm as jest.Mock).mockReturnValue(true);
   });
 
   it('renderiza estado de carregamento inicialmente e depois exibe os livros', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }); 
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
     render(<CatalogPage />);
     expect(screen.getByText(/Carregando livros.../i)).toBeInTheDocument();
@@ -182,12 +182,12 @@ describe('PaginaDeCatalogo', () => {
       expect(screen.getByText('Livro Um')).toBeInTheDocument();
       expect(screen.getByText('Livro Dois')).toBeInTheDocument();
     });
-    expect(getDocs).toHaveBeenCalledTimes(2); 
+    expect(getDocs).toHaveBeenCalledTimes(2);
   });
 
   it('exibe estado de vazio se nenhum livro for encontrado', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [] }) 
+      .mockResolvedValueOnce({ docs: [] })
       .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
     render(<CatalogPage />);
@@ -198,12 +198,12 @@ describe('PaginaDeCatalogo', () => {
 
   it('abre BookForm quando o botão "Adicionar Novo Livro" é clicado', async () => {
      (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [] }); 
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [] });
 
     render(<CatalogPage />);
     await waitFor(() => expect(screen.queryByTestId('book-form')).not.toBeInTheDocument());
-    
+
     const addButton = screen.getByRole('button', { name: /Adicionar Novo Livro/i });
     fireEvent.click(addButton);
 
@@ -214,30 +214,30 @@ describe('PaginaDeCatalogo', () => {
 
   it('adiciona um novo livro com sucesso', async () => {
     const expectedPlaceholderUrl = `https://placehold.co/300x450.png?text=${encodeURIComponent(mockNewBookFormData.title)}`;
-    
+
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [{ id: 'novo-livro-id', data: () => ({ ...mockNewBookFormData, coverImageUrl: expectedPlaceholderUrl, status: 'Disponível', addedDate: { toMillis: () => Date.now() }}) }] }) 
-      .mockResolvedValueOnce({ docs: [] }); 
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-livro-id', data: () => ({ ...mockNewBookFormData, coverImageUrl: expectedPlaceholderUrl, status: 'Disponível', addedDate: { toMillis: () => Date.now() }}) }] })
+      .mockResolvedValueOnce({ docs: [] });
 
     render(<CatalogPage />);
-    await screen.findByText(/Nenhum livro encontrado/i); 
+    await screen.findByText(/Nenhum livro encontrado/i);
 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Livro/i }));
     await screen.findByTestId('book-form');
-    
-    fireEvent.submit(screen.getByTestId('book-form')); 
+
+    fireEvent.submit(screen.getByTestId('book-form'));
 
     await waitFor(() => {
       expect(addDoc).toHaveBeenCalledTimes(1);
       expect(addDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'collectionRef', path: 'books' }), 
+        expect.objectContaining({ type: 'collectionRef', path: 'books' }),
         expect.objectContaining({
-          ...mockNewBookFormData, 
-          coverImageUrl: expectedPlaceholderUrl, 
+          ...mockNewBookFormData,
+          coverImageUrl: expectedPlaceholderUrl,
           status: 'Disponível',
-          addedDate: expect.any(Object), 
+          addedDate: expect.any(Object),
         })
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Livro adicionado com sucesso!' });
@@ -250,31 +250,31 @@ describe('PaginaDeCatalogo', () => {
      const expectedEditedBookCoverUrl = mockEditedBookFormData.coverImageUrl || `https://placehold.co/300x450.png?text=${encodeURIComponent(mockEditedBookFormData.title)}`;
 
      (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: [{ id: editableBook.id, data: () => ({...editableBook, addedDate: { toMillis: () => editableBook.addedDate }}) }] }) 
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [{ id: editableBook.id, data: () => ({...editableBook, ...mockEditedBookFormData, coverImageUrl: expectedEditedBookCoverUrl, addedDate: { toMillis: () => editableBook.addedDate }}) }] }) 
-      .mockResolvedValueOnce({ docs: [] }); 
-      
+      .mockResolvedValueOnce({ docs: [{ id: editableBook.id, data: () => ({...editableBook, addedDate: { toMillis: () => editableBook.addedDate }}) }] })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [{ id: editableBook.id, data: () => ({...editableBook, ...mockEditedBookFormData, coverImageUrl: expectedEditedBookCoverUrl, addedDate: { toMillis: () => editableBook.addedDate }}) }] })
+      .mockResolvedValueOnce({ docs: [] });
+
     render(<CatalogPage />);
     await screen.findByText(editableBook.title);
 
-    fireEvent.click(screen.getByTestId(`book-card-${editableBook.id}-edit-button`)); 
+    fireEvent.click(screen.getByTestId(`book-card-${editableBook.id}-edit-button`));
 
-    await screen.findByTestId('book-form'); 
-    fireEvent.submit(screen.getByTestId('book-form')); 
+    await screen.findByTestId('book-form');
+    fireEvent.submit(screen.getByTestId('book-form'));
 
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
       expect(updateDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'docRef', path: 'books', id: editableBook.id }), 
-        expect.objectContaining({ 
+        expect.objectContaining({ type: 'docRef', path: 'books', id: editableBook.id }),
+        expect.objectContaining({
           title: mockEditedBookFormData.title,
           author: mockEditedBookFormData.author,
           isbn: mockEditedBookFormData.isbn,
           genre: mockEditedBookFormData.genre,
           publicationYear: mockEditedBookFormData.publicationYear,
-          coverImageUrl: expectedEditedBookCoverUrl, 
-          status: editableBook.status, 
+          coverImageUrl: expectedEditedBookCoverUrl,
+          status: editableBook.status,
           borrowedByClientId: editableBook.borrowedByClientId,
           borrowedByName: editableBook.borrowedByName,
           borrowedDate: editableBook.borrowedDate ? expect.any(Object) : null,
@@ -288,21 +288,21 @@ describe('PaginaDeCatalogo', () => {
 
   it('exclui um livro com sucesso', async () => {
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) 
-      .mockResolvedValueOnce({ docs: [] }) 
-      .mockResolvedValueOnce({ docs: [mockBooks[1]].map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }); 
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) })
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: [mockBooks[1]].map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
     render(<CatalogPage />);
     await screen.findByText(mockBooks[0].title);
-    
+
     fireEvent.click(screen.getByTestId(`book-card-${mockBooks[0].id}-delete-button`));
 
     expect(global.confirm).toHaveBeenCalledWith('Tem certeza que deseja excluir este livro?');
-    
+
     await waitFor(() => {
-      expect(batchDeleteMock).toHaveBeenCalledTimes(1); 
+      expect(batchDeleteMock).toHaveBeenCalledTimes(1);
       expect(batchCommitMock).toHaveBeenCalledTimes(1);
       expect(mockToast).toHaveBeenCalledWith({ title: 'Livro e histórico de empréstimos excluídos com sucesso!' });
     });
@@ -310,49 +310,49 @@ describe('PaginaDeCatalogo', () => {
   });
 
   it('empresta um livro com sucesso', async () => {
-    const bookToLoan = mockBooks[0]; 
+    const bookToLoan = mockBooks[0];
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) 
-      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, status: b.id === bookToLoan.id ? 'Emprestado' : b.status, borrowedByClientId: b.id === bookToLoan.id ? mockClients[0].id : b.borrowedByClientId, borrowedByName: b.id === bookToLoan.id ? mockClients[0].name : b.borrowedByName, borrowedDate: b.id === bookToLoan.id ? { toMillis: () => Date.now()} : (b.borrowedDate ? { toMillis: () => b.borrowedDate } : null) , addedDate: { toMillis: () => b.addedDate }}) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }); 
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) })
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, status: b.id === bookToLoan.id ? 'Emprestado' : b.status, borrowedByClientId: b.id === bookToLoan.id ? mockClients[0].id : b.borrowedByClientId, borrowedByName: b.id === bookToLoan.id ? mockClients[0].name : b.borrowedByName, borrowedDate: b.id === bookToLoan.id ? { toMillis: () => Date.now()} : (b.borrowedDate ? { toMillis: () => b.borrowedDate } : null) , addedDate: { toMillis: () => b.addedDate }}) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
-    (getDoc as jest.Mock).mockResolvedValue({ exists: () => true, data: () => mockClients[0] }); 
+    (getDoc as jest.Mock).mockResolvedValue({ exists: () => true, data: () => mockClients[0] });
 
     render(<CatalogPage />);
-    await screen.findByText(bookToLoan.title); 
+    await screen.findByText(bookToLoan.title);
 
     fireEvent.click(screen.getByTestId(`book-card-${bookToLoan.id}-loan-button`));
-    
+
     await waitFor(() => {
         expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'docRef', path: 'books', id: bookToLoan.id}), expect.objectContaining({
             status: 'Emprestado',
             borrowedByClientId: mockClients[0].id,
             borrowedByName: mockClients[0].name,
-            borrowedDate: expect.any(Object) 
+            borrowedDate: expect.any(Object)
         }));
-        expect(addDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'collectionRef', path: 'loanActivities'}), expect.objectContaining({ 
+        expect(addDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'collectionRef', path: 'loanActivities'}), expect.objectContaining({
             bookId: bookToLoan.id,
             bookTitle: bookToLoan.title,
-            clientId: mockClients[0].id, 
-            clientName: mockClients[0].name, 
+            clientId: mockClients[0].id,
+            clientName: mockClients[0].name,
             type: 'loan',
-            loanDate: expect.any(Object) 
+            loanDate: expect.any(Object)
         }));
         expect(mockToast).toHaveBeenCalledWith({ title: 'Livro emprestado com sucesso!' });
     });
   });
 
   it('devolve um livro com sucesso', async () => {
-    const bookToReturn = mockBooks[1]; 
+    const bookToReturn = mockBooks[1];
     (getDocs as jest.Mock)
-      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }) 
-      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, status: b.id === bookToReturn.id ? 'Disponível' : b.status, borrowedByClientId: b.id === bookToReturn.id ? null : b.borrowedByClientId, borrowedByName: b.id === bookToReturn.id ? null : b.borrowedByName, borrowedDate: b.id === bookToReturn.id ? null : (b.borrowedDate ? { toMillis: () => b.borrowedDate } : null), addedDate: { toMillis: () => b.addedDate }}) })) }) 
-      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) }); 
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) })
+      .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, status: b.id === bookToReturn.id ? 'Disponível' : b.status, borrowedByClientId: b.id === bookToReturn.id ? null : b.borrowedByClientId, borrowedByName: b.id === bookToReturn.id ? null : b.borrowedByName, borrowedDate: b.id === bookToReturn.id ? null : (b.borrowedDate ? { toMillis: () => b.borrowedDate } : null), addedDate: { toMillis: () => b.addedDate }}) })) })
+      .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
 
     render(<CatalogPage />);
-    await screen.findByText(bookToReturn.title); 
+    await screen.findByText(bookToReturn.title);
 
     fireEvent.click(screen.getByTestId(`book-card-${bookToReturn.id}-return-button`));
 
@@ -363,15 +363,134 @@ describe('PaginaDeCatalogo', () => {
             borrowedByName: null,
             borrowedDate: null
         }));
-        expect(addDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'collectionRef', path: 'loanActivities'}), expect.objectContaining({ 
+        expect(addDoc).toHaveBeenCalledWith(expect.objectContaining({type: 'collectionRef', path: 'loanActivities'}), expect.objectContaining({
             bookId: bookToReturn.id,
             bookTitle: bookToReturn.title,
-            clientId: bookToReturn.borrowedByClientId, 
+            clientId: bookToReturn.borrowedByClientId,
             clientName: bookToReturn.borrowedByName,
             type: 'return',
-            loanDate: expect.any(Object) 
+            loanDate: expect.any(Object)
         }));
         expect(mockToast).toHaveBeenCalledWith({ title: 'Livro devolvido com sucesso!' });
     });
   });
+
+  // Testes de tratamento de erro
+  it('lida com erro ao buscar livros e clientes', async () => {
+    (getDocs as jest.Mock).mockRejectedValueOnce(new Error('Falha ao buscar'));
+    render(<CatalogPage />);
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Erro ao buscar dados",
+        description: "Não foi possível carregar livros e clientes.",
+        variant: "destructive"
+      });
+    });
+  });
+
+  it('lida com erro ao adicionar um novo livro', async () => {
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] }); // fetch inicial
+    (addDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao adicionar'));
+
+    render(<CatalogPage />);
+    await screen.findByText(/Nenhum livro encontrado/i);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Livro/i }));
+    await screen.findByTestId('book-form');
+    fireEvent.submit(screen.getByTestId('book-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao salvar livro", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao editar um livro', async () => {
+    const bookToEdit = mockBooks[0];
+    (getDocs as jest.Mock)
+        .mockResolvedValueOnce({ docs: [ {id: bookToEdit.id, data: () => ({...bookToEdit, addedDate: { toMillis: () => bookToEdit.addedDate }})}] })
+        .mockResolvedValueOnce({ docs: []}); // clients
+    (updateDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao atualizar'));
+
+    render(<CatalogPage />);
+    await screen.findByText(bookToEdit.title);
+    fireEvent.click(screen.getByTestId(`book-card-${bookToEdit.id}-edit-button`));
+    await screen.findByTestId('book-form');
+    fireEvent.submit(screen.getByTestId('book-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao salvar livro", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao excluir um livro', async () => {
+    const bookToDelete = mockBooks[0];
+     (getDocs as jest.Mock) // For initial load
+        .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+        .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
+
+    (writeBatch as jest.Mock).mockImplementation(() => ({ // Mock writeBatch to throw error on commit
+        delete: jest.fn(),
+        commit: jest.fn().mockRejectedValueOnce(new Error('Falha no batch commit')),
+    }));
+
+
+    render(<CatalogPage />);
+    await screen.findByText(bookToDelete.title);
+    fireEvent.click(screen.getByTestId(`book-card-${bookToDelete.id}-delete-button`));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao excluir livro", variant: "destructive" });
+    });
+  });
+
+
+  it('lida com erro ao emprestar um livro (falha ao buscar cliente)', async () => {
+    const bookToLoan = mockBooks[0];
+     (getDocs as jest.Mock) // For initial load
+        .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+        .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
+    (getDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao buscar cliente'));
+
+    render(<CatalogPage />);
+    await screen.findByText(bookToLoan.title);
+    fireEvent.click(screen.getByTestId(`book-card-${bookToLoan.id}-loan-button`));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao processar empréstimo/devolução", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao emprestar um livro (falha ao atualizar livro)', async () => {
+    const bookToLoan = mockBooks[0];
+     (getDocs as jest.Mock) // For initial load
+        .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+        .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
+    (getDoc as jest.Mock).mockResolvedValue({ exists: () => true, data: () => mockClients[0] }); // Cliente encontrado
+    (updateDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao atualizar livro')); // Erro no updateDoc
+
+    render(<CatalogPage />);
+    await screen.findByText(bookToLoan.title);
+    fireEvent.click(screen.getByTestId(`book-card-${bookToLoan.id}-loan-button`));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao processar empréstimo/devolução", variant: "destructive" });
+    });
+  });
+
+
+  it('lida com erro ao devolver um livro', async () => {
+    const bookToReturn = mockBooks[1]; // Um livro que está emprestado
+    (getDocs as jest.Mock) // For initial load
+        .mockResolvedValueOnce({ docs: mockBooks.map(b => ({ id: b.id, data: () => ({...b, addedDate: { toMillis: () => b.addedDate }, borrowedDate: b.borrowedDate ? { toMillis: () => b.borrowedDate } : null }) })) })
+        .mockResolvedValueOnce({ docs: mockClients.map(c => ({ id: c.id, data: () => c })) });
+    (updateDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao devolver'));
+
+    render(<CatalogPage />);
+    await screen.findByText(bookToReturn.title);
+    fireEvent.click(screen.getByTestId(`book-card-${bookToReturn.id}-return-button`));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao processar empréstimo/devolução", variant: "destructive" });
+    });
+  });
 });
+

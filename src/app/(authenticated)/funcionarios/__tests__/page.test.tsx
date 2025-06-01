@@ -23,7 +23,7 @@ jest.mock('firebase/firestore', () => ({
 // Mock 'firebase/auth'
 jest.mock('firebase/auth', () => ({
   createUserWithEmailAndPassword: jest.fn(),
-  deleteUser: jest.fn(),
+  deleteUser: jest.fn(), // Manter, embora não usado diretamente na lógica de exclusão do componente
   getAuth: jest.fn(() => ({ currentUser: { uid: 'admin1' } })), // Mock básico para getAuth
 }));
 
@@ -41,7 +41,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 // Mock '@/lib/firebase'
 jest.mock('@/lib/firebase', () => ({
   db: { app: {} },
-  auth: { name: 'mockedFirebaseAuth' },
+  auth: { name: 'mockedFirebaseAuth' }, // Objeto auth mockado
 }));
 
 // Mock hooks
@@ -62,19 +62,34 @@ jest.mock('@/components/funcionarios/employee-card', () => ({
     <div data-testid={`employee-card-${employee.id}`}>
       <h5>{employee.name}</h5>
       <button data-testid={`employee-card-${employee.id}-edit-button`} onClick={() => onEdit(employee)} disabled={currentUserId === employee.id && isLastAdmin && employee.role === 'admin'}>Editar</button>
-      <button data-testid={`employee-card-${employee.id}-delete-button`} onClick={() => onDelete(employee.id, employee.role)} disabled={currentUserId === employee.id || (isLastAdmin && employee.role === 'admin')}>Excluir</button>
+      {/* Simular AlertDialogTrigger para delete */}
+      <button
+        data-testid={`employee-card-${employee.id}-delete-button`}
+        onClick={() => {
+            if (global.confirm('Tem certeza que deseja excluir este funcionário? A conta de autenticação associada NÃO será excluída automaticamente e precisará ser removida manually do Firebase Console.')) {
+                onDelete(employee.id, employee.role);
+            }
+        }}
+        disabled={currentUserId === employee.id || (isLastAdmin && employee.role === 'admin')}
+      >
+        Excluir
+      </button>
     </div>
   )),
 }));
+
+
+const mockNewEmployeeData = { name: 'Novo Funcionário Mock', email: 'novo_func@example.com', password: 'password123', role: 'employee' as 'employee' | 'admin' };
+const mockEditEmployeeData = { name: 'Nome Atualizado Mock', role: 'employee' as 'employee' | 'admin' };
 
 jest.mock('@/components/funcionarios/employee-form', () => ({
   EmployeeForm: jest.fn(({ onSubmit, onCancel, initialData, isSubmitting }) => (
     <form data-testid="employee-form" onSubmit={(e) => {
         e.preventDefault();
         if (initialData) {
-            onSubmit({ name: 'Nome Atualizado Mock', role: 'employee' });
+            onSubmit(mockEditEmployeeData);
         } else {
-            onSubmit({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', password: 'password123', role: 'employee' });
+            onSubmit(mockNewEmployeeData);
         }
     }}>
       <button type="submit" disabled={isSubmitting}>Salvar Funcionário (Form Mock)</button>
@@ -109,7 +124,7 @@ const mockAdminUser: User = {
   uid: 'admin1',
   email: 'admin@example.com',
   name: 'Usuário Admin',
-  displayName: 'Usuário Admin', 
+  displayName: 'Usuário Admin',
   role: 'admin',
   toJSON: jest.fn(() => ({ uid: 'admin1', email: 'admin@example.com', name: 'Usuário Admin', role: 'admin' })),
 };
@@ -137,7 +152,7 @@ describe('PaginaDeFuncionarios', () => {
     (createUserWithEmailAndPassword as jest.Mock).mockReset().mockResolvedValue({ user: { uid: 'novo-auth-uid' } });
     (collection as jest.Mock).mockReset().mockImplementation((_db, path) => ({ type: 'collectionRef', path }));
     (doc as jest.Mock).mockReset().mockImplementation((_db, path, id) => ({ type: 'docRef', path, id }));
-    
+
     mockToast.mockClear();
     mockRouterReplace.mockClear();
     mockUseRouter.mockReturnValue({ replace: mockRouterReplace, push: jest.fn() });
@@ -156,17 +171,12 @@ describe('PaginaDeFuncionarios', () => {
       expect(screen.getByText(/Acesso Negado/i)).toBeInTheDocument();
     });
   });
-  
+
   it('renderiza estado de carregamento inicialmente para admin e depois exibe funcionários', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
     (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) });
 
     render(<FuncionariosPage />);
-    // A página agora tem um loader geral se user não estiver carregado ou isLoadingPage for true.
-    // Se o user for admin, ele tentará buscar.
-    // O "Carregando funcionários..." só aparece se for admin E estiver carregando.
-    // Aqui, como isLoadingPage é true inicialmente, ele mostrará o loader geral.
-    // Vamos procurar pelo loader geral.
     expect(screen.getByText(/Carregando\.\.\./i)).toBeInTheDocument();
 
 
@@ -179,7 +189,7 @@ describe('PaginaDeFuncionarios', () => {
 
   it('exibe estado de vazio para admin se nenhum funcionário for encontrado', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); 
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] });
 
     render(<FuncionariosPage />);
     await waitFor(() => {
@@ -193,7 +203,7 @@ describe('PaginaDeFuncionarios', () => {
 
     render(<FuncionariosPage />);
     await waitFor(() => expect(screen.queryByTestId('employee-form')).not.toBeInTheDocument());
-    
+
     const addButton = screen.getByRole('button', { name: /Adicionar Novo Funcionário/i });
     fireEvent.click(addButton);
 
@@ -204,28 +214,28 @@ describe('PaginaDeFuncionarios', () => {
 
   it('adiciona um novo funcionário com sucesso para admin', async () => {
     mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
-    (getDocs as jest.Mock) 
+    (getDocs as jest.Mock)
       .mockResolvedValueOnce({ docs: [] }) // Carga inicial
-      .mockResolvedValueOnce({ docs: [{ id: 'novo-auth-uid', data: () => ({ name: 'Novo Funcionário Mock', email: 'novo_func@example.com', role: 'employee' }) }]}); // Após adicionar
+      .mockResolvedValueOnce({ docs: [{ id: 'novo-auth-uid', data: () => ({ name: mockNewEmployeeData.name, email: mockNewEmployeeData.email, role: mockNewEmployeeData.role }) }]}); // Após adicionar
 
     render(<FuncionariosPage />);
     await screen.findByText(/Nenhum funcionário encontrado/i);
 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Funcionário/i }));
     await screen.findByTestId('employee-form');
-    
+
     fireEvent.submit(screen.getByTestId('employee-form'));
 
     await waitFor(() => {
-      expect(createUserWithEmailAndPassword).toHaveBeenCalledWith(expect.anything(), 'novo_func@example.com', 'password123');
+      expect(createUserWithEmailAndPassword).toHaveBeenCalledWith(expect.anything(), mockNewEmployeeData.email, mockNewEmployeeData.password);
       expect(setDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'employees', id: 'novo-auth-uid' }), {
-        name: 'Novo Funcionário Mock',
-        email: 'novo_func@example.com',
-        role: 'employee',
+        name: mockNewEmployeeData.name,
+        email: mockNewEmployeeData.email,
+        role: mockNewEmployeeData.role,
       });
       expect(mockToast).toHaveBeenCalledWith({ title: 'Funcionário adicionado com sucesso!' });
     });
-    await waitFor(() => expect(screen.getByText('Novo Funcionário Mock')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(mockNewEmployeeData.name)).toBeInTheDocument());
   });
 
   it('edita um funcionário existente com sucesso para admin', async () => {
@@ -233,24 +243,24 @@ describe('PaginaDeFuncionarios', () => {
     const editableEmployee = mockEmployees[1]; // Joana Silva
      (getDocs as jest.Mock)
         .mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) }) // Carga inicial
-        .mockResolvedValueOnce({ docs: mockEmployees.map(e => e.id === editableEmployee.id ? { id: e.id, data: () => ({...e, name: 'Nome Atualizado Mock' })} : {id: e.id, data: () => e}) }); // Após editar
-      
+        .mockResolvedValueOnce({ docs: mockEmployees.map(e => e.id === editableEmployee.id ? { id: e.id, data: () => ({...e, name: mockEditEmployeeData.name, role: mockEditEmployeeData.role })} : {id: e.id, data: () => e}) }); // Após editar
+
     render(<FuncionariosPage />);
     await screen.findByText(editableEmployee.name);
 
     fireEvent.click(screen.getByTestId(`employee-card-${editableEmployee.id}-edit-button`));
 
-    await screen.findByTestId('employee-form'); 
+    await screen.findByTestId('employee-form');
     fireEvent.submit(screen.getByTestId('employee-form'));
 
     await waitFor(() => {
       expect(updateDoc).toHaveBeenCalledTimes(1);
-      expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'employees', id: editableEmployee.id }), 
-        { name: 'Nome Atualizado Mock', role: 'employee' } 
+      expect(updateDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'employees', id: editableEmployee.id }),
+        { name: mockEditEmployeeData.name, role: mockEditEmployeeData.role }
       );
       expect(mockToast).toHaveBeenCalledWith({ title: 'Funcionário atualizado com sucesso!' });
     });
-     await waitFor(() => expect(screen.getByText('Nome Atualizado Mock')).toBeInTheDocument());
+     await waitFor(() => expect(screen.getByText(mockEditEmployeeData.name)).toBeInTheDocument());
   });
 
   it('exclui um funcionário com sucesso para admin', async () => {
@@ -262,16 +272,92 @@ describe('PaginaDeFuncionarios', () => {
 
     render(<FuncionariosPage />);
     await screen.findByText(employeeToDelete.name);
-    
+
     fireEvent.click(screen.getByTestId(`employee-card-${employeeToDelete.id}-delete-button`));
 
     expect(global.confirm).toHaveBeenCalledWith(expect.stringContaining('Tem certeza que deseja excluir este funcionário?'));
-    
+
     await waitFor(() => {
       expect(deleteDoc).toHaveBeenCalledTimes(1);
       expect(deleteDoc).toHaveBeenCalledWith(expect.objectContaining({ type: 'docRef', path: 'employees', id: employeeToDelete.id }));
       expect(mockToast).toHaveBeenCalledWith({ title: 'Funcionário excluído do Firestore!', description: 'Lembre-se de remover a conta do Firebase Authentication manualmente.' });
     });
     await waitFor(() => expect(screen.queryByText(employeeToDelete.name)).not.toBeInTheDocument());
+  });
+
+  // Testes de tratamento de erro
+  it('lida com erro ao buscar funcionários', async () => {
+    mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    (getDocs as jest.Mock).mockRejectedValueOnce(new Error('Falha ao buscar'));
+    render(<FuncionariosPage />);
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao buscar funcionários", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao adicionar funcionário (falha na criação de auth)', async () => {
+    mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // Carga inicial
+    (createUserWithEmailAndPassword as jest.Mock).mockRejectedValueOnce({ code: 'auth/email-already-in-use', message: 'Email já em uso.' });
+
+    render(<FuncionariosPage />);
+    await screen.findByText(/Nenhum funcionário encontrado/i);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Funcionário/i }));
+    await screen.findByTestId('employee-form');
+    fireEvent.submit(screen.getByTestId('employee-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro de Autenticação", description: "Email já em uso.", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao adicionar funcionário (falha ao salvar no firestore)', async () => {
+    mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: [] }); // Carga inicial
+    (createUserWithEmailAndPassword as jest.Mock).mockResolvedValueOnce({ user: { uid: 'novo-auth-uid' }});
+    (setDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao salvar Firestore'));
+
+    render(<FuncionariosPage />);
+    await screen.findByText(/Nenhum funcionário encontrado/i);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar Novo Funcionário/i }));
+    await screen.findByTestId('employee-form');
+    fireEvent.submit(screen.getByTestId('employee-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao salvar funcionário", variant: "destructive" });
+    });
+  });
+
+
+  it('lida com erro ao editar funcionário', async () => {
+    mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    const employeeToEdit = mockEmployees[1];
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) });
+    (updateDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao atualizar funcionário'));
+
+    render(<FuncionariosPage />);
+    await screen.findByText(employeeToEdit.name);
+    fireEvent.click(screen.getByTestId(`employee-card-${employeeToEdit.id}-edit-button`));
+    await screen.findByTestId('employee-form');
+    fireEvent.submit(screen.getByTestId('employee-form'));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao salvar funcionário", variant: "destructive" });
+    });
+  });
+
+  it('lida com erro ao excluir funcionário do Firestore', async () => {
+    mockUseAuthStore.mockReturnValue({ user: mockAdminUser, isLoading: false, setUser: jest.fn(), setLoading: jest.fn() });
+    const employeeToDelete = mockEmployees[1];
+    (getDocs as jest.Mock).mockResolvedValueOnce({ docs: mockEmployees.map(e => ({ id: e.id, data: () => e })) });
+    (deleteDoc as jest.Mock).mockRejectedValueOnce(new Error('Falha ao excluir Firestore'));
+
+    render(<FuncionariosPage />);
+    await screen.findByText(employeeToDelete.name);
+    fireEvent.click(screen.getByTestId(`employee-card-${employeeToDelete.id}-delete-button`));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({ title: "Erro ao excluir funcionário do Firestore", variant: "destructive" });
+    });
   });
 });
